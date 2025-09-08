@@ -1,6 +1,6 @@
 // Popup script for Tab Monitor Closer.
 //
-// Configure thresholds and domain rules. Email sending has been removed.
+// Configure thresholds, view history, and (optionally) send email via Gmail OAuth (launchWebAuthFlow).
 
 document.addEventListener("DOMContentLoaded", () => {
   const byId = (id) => document.getElementById(id);
@@ -130,5 +130,60 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // No native host — only SmtpJS, so no extra toggles here.
+  // ===== Gmail UI (launchWebAuthFlow) =====
+  const emailEl = byId("notifyEmail");
+  const btnConn = byId("btnGmailConnect");
+  const btnTest = byId("btnGmailTest");
+
+  // Заполняем поле получателя из sync-хранилища
+  if (emailEl) {
+    chrome.storage.sync.get("notifyEmail", ({ notifyEmail }) => {
+      if (notifyEmail) emailEl.value = notifyEmail;
+    });
+    emailEl.addEventListener("change", () => {
+      chrome.storage.sync.set({ notifyEmail: (emailEl.value || "").trim() });
+    });
+  }
+
+  // Кнопка «Подключить Gmail» — запускает OAuth поток
+  if (btnConn) {
+    btnConn.addEventListener("click", () => {
+      btnConn.disabled = true;
+      const prev = statusEl.textContent;
+      statusEl.textContent = "Authorizing...";
+      chrome.runtime.sendMessage({ type: "gmail-connect" }, (res) => {
+        btnConn.disabled = false;
+        if (res && res.ok) {
+          statusEl.textContent = "Gmail connected";
+        } else {
+          statusEl.textContent = `Error: ${(res && res.error) || "failed"}`;
+        }
+        setTimeout(() => (statusEl.textContent = prev || ""), 1500);
+      });
+    });
+  }
+
+  // Кнопка «Тестовое письмо» — отправляет тест от имени пользователя
+  if (btnTest) {
+    btnTest.addEventListener("click", () => {
+      const to = (emailEl && emailEl.value || "").trim();
+      if (!to) {
+        statusEl.textContent = "Enter e-mail first";
+        setTimeout(() => (statusEl.textContent = ""), 1500);
+        return;
+      }
+      btnTest.disabled = true;
+      const prev = statusEl.textContent;
+      statusEl.textContent = "Sending test...";
+      chrome.runtime.sendMessage({
+        type: "gmail-send",
+        payload: { to, subject: "Tab Monitor: test", text: "Test message from extension", html: "<b>Test</b> message from extension" }
+      }, (res) => {
+        btnTest.disabled = false;
+        statusEl.textContent = (res && res.ok) ? "Sent" : `Error: ${(res && res.error) || "failed"}`;
+        setTimeout(() => (statusEl.textContent = prev || ""), 1500);
+      });
+    });
+  }
+  // ===== /Gmail UI =====
 });
