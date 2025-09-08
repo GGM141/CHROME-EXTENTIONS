@@ -9,14 +9,16 @@
     "alarms",
     "scripting",
     "notifications",
-    "sessions"
+    "sessions",
+    "identity"
   ],
   "host_permissions": [
     "http://*/*",
     "https://*/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "https://gmail.googleapis.com/*"
   },
   
   "action": {
