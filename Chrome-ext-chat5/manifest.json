@@ -14,11 +14,11 @@
   ],
   "host_permissions": [
     "http://*/*",
-    "https://*/*"
+    "https://*/*",
+    "https://gmail.googleapis.com/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "https://gmail.googleapis.com/*"
+    "service_worker": "background.js"
   },
   
   "action": {

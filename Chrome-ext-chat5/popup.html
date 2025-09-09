@@ -14,7 +14,7 @@
       margin-top: 8px;
       font-weight: bold;
     }
-    input[type="email"] {
+    input[type="email"], input[type="password"], input[type="text"] {
       width: 100%;
       padding: 4px;
       box-sizing: border-box;
@@ -27,6 +27,11 @@
     }
     p {
       margin-top: 12px;
+    }
+    .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #666;
     }
   </style>
 </head>
@@ -45,11 +50,24 @@
   <hr />
   <h3>Gmail</h3>
   <label for="notifyEmail">Recipient (email):</label>
-  <input type="email" id="notifyEmail" placeholder="you@example.com" />
+  <input type="email" id="notifyEmail" placeholder="you@example.com" title="Email получателя для уведомлений. Если пусто — письма не отправляются." />
   <div style="margin-top:8px; display:flex; gap:8px;">
-    <button id="btnGmailConnect" type="button">Connect Gmail</button>
-    <button id="btnGmailTest" type="button">Send test email</button>
+    <button id="btnGmailConnect" type="button" title="Авторизоваться через Google (launchWebAuthFlow)">Connect Gmail</button>
+    <button id="btnGmailTest" type="button" title="Отправить пробное письмо на указанный email">Send test email</button>
   </div>
+  <div class="hint">Сначала введите email и нажмите «Connect Gmail» для авторизации. Если email не указан — письма не отправляются.</div>
+
+  <hr />
+
+  <h3>Telegram</h3>
+  <label for="tgToken">Bot API Token:</label>
+  <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." title="Токен бота из @BotFather. Хранится в chrome.storage.sync." />
+  <label for="tgChatId">Chat ID or @channel:</label>
+  <input type="text" id="tgChatId" placeholder="123456789 or @your_channel" title="ID личного чата/группы или @канал. Бот должен иметь право писать." />
+  <div style="margin-top:8px; display:flex; gap:8px;">
+    <button id="btnTgTest" type="button" title="Отправить пробное сообщение в Telegram">Send test to Telegram</button>
+  </div>
+  <div class="hint">Если токен или chat ID пустые — сообщения не отправляются. Для каналов чаще нужен формат -100XXXXXXXXXX или @channelname.</div>
 
   <hr />
 

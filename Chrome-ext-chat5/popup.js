@@ -41,7 +41,9 @@ document.addEventListener("DOMContentLoaded", () => {
         thresholdMinutes: minutes,
       },
       () => {
-        statusEl.textContent = "Saved!";
+        statusEl.textContent = (hours === 0 && minutes === 0)
+          ? "Saved! Timer disabled; use Run now."
+          : "Saved!";
         setTimeout(() => (statusEl.textContent = ""), 1500);
       },
     );
@@ -186,4 +188,45 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   // ===== /Gmail UI =====
+  // ===== Telegram UI =====
+  const tgTokenEl = byId("tgToken");
+  const tgChatIdEl = byId("tgChatId");
+  const btnTgTest = byId("btnTgTest");
+
+  if (tgTokenEl || tgChatIdEl) {
+    chrome.storage.sync.get(["tgToken", "tgChatId"], ({ tgToken, tgChatId }) => {
+      if (tgTokenEl && tgToken) tgTokenEl.value = tgToken;
+      if (tgChatIdEl && tgChatId) tgChatIdEl.value = tgChatId;
+    });
+    if (tgTokenEl) tgTokenEl.addEventListener("change", () => {
+      chrome.storage.sync.set({ tgToken: (tgTokenEl.value || "").trim() });
+    });
+    if (tgChatIdEl) tgChatIdEl.addEventListener("change", () => {
+      chrome.storage.sync.set({ tgChatId: (tgChatIdEl.value || "").trim() });
+    });
+  }
+
+  if (btnTgTest) {
+    btnTgTest.addEventListener("click", () => {
+      const token = (tgTokenEl && tgTokenEl.value || "").trim();
+      const chatId = (tgChatIdEl && tgChatIdEl.value || "").trim();
+      if (!token || !chatId) {
+        statusEl.textContent = "Enter Telegram token and chat ID";
+        setTimeout(() => (statusEl.textContent = ""), 1800);
+        return;
+      }
+      btnTgTest.disabled = true;
+      const prev = statusEl.textContent;
+      statusEl.textContent = "Sending to Telegram...";
+      chrome.runtime.sendMessage({
+        type: "telegram-send",
+        payload: { text: "<b>Test</b> message from Tab Monitor Closer" }
+      }, (res) => {
+        btnTgTest.disabled = false;
+        statusEl.textContent = (res && res.ok) ? "Sent to Telegram" : `Error: ${(res && res.error) || "failed"}`;
+        setTimeout(() => (statusEl.textContent = prev || ""), 1500);
+      });
+    });
+  }
+  // ===== /Telegram UI =====
 });

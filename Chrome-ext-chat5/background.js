@@ -72,10 +72,15 @@ function computeCheckPeriodMinutes(hours, minutes) {
 
 function ensureCheckAlarm() {
   chrome.storage.sync.get(["thresholdHours", "thresholdMinutes"], (cfg) => {
-    const period = computeCheckPeriodMinutes(
-      cfg.thresholdHours ?? DEFAULT_THRESHOLD_HOURS,
-      cfg.thresholdMinutes ?? DEFAULT_THRESHOLD_MINUTES,
-    );
+    const hours = cfg.thresholdHours ?? DEFAULT_THRESHOLD_HOURS;
+    const minutes = cfg.thresholdMinutes ?? DEFAULT_THRESHOLD_MINUTES;
+    const totalMinutes = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
+    if (totalMinutes === 0) {
+      // Disable periodic checks when timeout is 00:00
+      chrome.alarms.clear("checkTabs", () => {});
+      return;
+    }
+    const period = computeCheckPeriodMinutes(hours, minutes);
     chrome.alarms.create("checkTabs", { periodInMinutes: period });
   });
 }
@@ -244,6 +249,7 @@ function checkTabsNow() {
                     findSessionIdForUrl(url).then((sessionId) => {
                       addToHistory(url, title, { sessionId, prev });
                       notifyClosedTabByEmailWebFlow(title, url);
+                      notifyClosedTabByTelegram(title, url);
                       incrementBadgeCount();
                       notifyClosed(url, title, { sessionId, prev });
                     }).finally(() => {
@@ -465,6 +471,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
     })().catch(err => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
+  if (msg.type === 'telegram-send') {
+    (async () => {
+      await sendTelegramMessage(msg.payload || {});
+      sendResponse({ ok: true });
+    })().catch(err => sendResponse({ ok: false, error: String(err && (err.message || err)) }));
     return true;
   }
   if (msg.type === "getClosedHistory") {
@@ -715,5 +728,46 @@ async function notifyClosedTabByEmailWebFlow(title, url) {
     }, { interactiveIfNeeded: false });
   } catch (e) {
     // тихая деградация
+  }
+}
+
+// =================== Telegram Bot API ===================
+const TELEGRAM_API_ORIGIN = 'https://api.telegram.org';
+
+function escapeHtmlLite(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function sendTelegramMessage({ text, disablePreview = false } = {}) {
+  const { tgToken, tgChatId } = await chrome.storage.sync.get([ 'tgToken', 'tgChatId' ]);
+  if (!tgToken || !tgChatId) return; // not configured, do nothing
+  if (!text) return;
+
+  const url = `${TELEGRAM_API_ORIGIN}/bot${tgToken}/sendMessage`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: tgChatId,
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: Boolean(disablePreview)
+    })
+  });
+  const data = await safeJson(res);
+  if (!res.ok || (data && data.ok === false)) {
+    const msg = (data && (data.description || data.error || data.message)) || `HTTP ${res.status}`;
+    throw new Error(`Telegram send failed: ${msg}`);
+  }
+}
+
+async function notifyClosedTabByTelegram(title, url) {
+  try {
+    const t = `<b>Closed as unread</b>\n<a href="${escapeHtmlLite(url)}">${escapeHtmlLite(title || url)}</a>`;
+    await sendTelegramMessage({ text: t, disablePreview: false });
+  } catch (e) {
+    // silent
   }
 }
