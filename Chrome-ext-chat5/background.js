@@ -138,7 +138,61 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   });
 });
 
-// No scroll messages needed in simplified logic.
+// Activity tracking functions
+function checkTabActivity() {
+  return {
+    func: () => {
+      const metrics = {
+        scrollY: window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0,
+        pageHeight: Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight,
+          document.documentElement.offsetHeight
+        ),
+        viewHeight: window.innerHeight,
+        hasInteracted: false,
+        timestamp: Date.now()
+      };
+      
+      // Проверяем, было ли взаимодействие со страницей
+      if (window.__tabMonitorInteracted) {
+        metrics.hasInteracted = true;
+      }
+      
+      return metrics;
+    }
+  };
+}
+
+function injectActivityTracker() {
+  return {
+    func: () => {
+      if (window.__tabMonitorInitialized) return;
+      window.__tabMonitorInitialized = true;
+      window.__tabMonitorInteracted = false;
+
+      const markInteracted = () => {
+        window.__tabMonitorInteracted = true;
+      };
+
+      // Отслеживаем различные типы взаимодействий
+      window.addEventListener('click', markInteracted);
+      window.addEventListener('keydown', markInteracted);
+      window.addEventListener('mousemove', () => {
+        if (!window.__tabMonitorInteracted) {
+          const now = Date.now();
+          if (!window.__lastMouseMove || now - window.__lastMouseMove > 1000) {
+            window.__lastMouseMove = now;
+            window.__mouseMovements = (window.__mouseMovements || 0) + 1;
+            if (window.__mouseMovements > 5) {
+              markInteracted();
+            }
+          }
+        }
+      });
+    }
+  };
+}
 
 // Periodically check all tracked tabs.  For each tab that has been open
 // longer than the threshold, retrieve its scroll position. If the page has
@@ -209,28 +263,35 @@ function checkTabsNow() {
               {
                 target: { tabId: tabId },
                 world: "MAIN",
-                func: () => {
-                  const y =
-                    window.scrollY ||
-                    document.documentElement.scrollTop ||
-                    document.body.scrollTop ||
-                    0;
-                  return y;
-                },
+                func: checkTabActivity().func,
               },
               (results) => {
                 if (chrome.runtime.lastError) {
-                  // Back off retries to avoid repeated errors
                   openTimes[idStr] = Date.now();
                   chrome.storage.local.set({ openTimes });
                   pending--; maybeFinish();
                   return;
                 }
-                const scrollPos =
-                  results && results[0] && results[0].result != null
-                    ? results[0].result
-                    : 0;
-                if (scrollPos <= 0) {
+
+                const metrics = results && results[0] && results[0].result;
+                if (!metrics) {
+                  pending--; maybeFinish();
+                  return;
+                }
+
+                // Инжектируем трекер активности, если еще не сделали
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  world: "MAIN",
+                  func: injectActivityTracker().func,
+                });
+
+                const isShortPage = metrics.pageHeight <= metrics.viewHeight * 1.2; // 20% запас
+                const isRead = 
+                  metrics.hasInteracted || // были взаимодействия
+                  (!isShortPage && metrics.scrollY > 0); // или была прокрутка на длинной странице
+
+                if (!isRead) {
                   const url = tab.url;
                   const title = tab.title || url;
                   // Close the tab.  This will trigger onRemoved, which cleans
