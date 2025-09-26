@@ -10,13 +10,12 @@
     "scripting",
     "notifications",
     "sessions",
-     "identity",
-     "downloads"
+      "downloads"
   ],
   "host_permissions": [
     "http://*/*",
-    "https://*/*",
-    "https://gmail.googleapis.com/*"
+    "https://*/*"
+  ]
   ],
   "background": {
     "service_worker": "background.js"
