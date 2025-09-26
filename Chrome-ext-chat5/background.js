@@ -445,10 +445,63 @@ function addToHistory(url, title, restore) {
           try {
             console.warn("[TMC] history append:", url, "len=", list.length);
           } catch (e) { /* ignore */ }
+          // Also append to HTML log if configured
+          // Persist the entry in a separate htmlLogEntries array for future aggregated export
+          chrome.storage.local.get('htmlLogEntries', (d) => {
+            const arr = Array.isArray(d.htmlLogEntries) ? d.htmlLogEntries : [];
+            arr.unshift({ url, title, ts: Date.now() });
+            if (arr.length > MAX_HISTORY) arr.length = MAX_HISTORY;
+            chrome.storage.local.set({ htmlLogEntries: arr }, () => {
+              writeHtmlLog(url, title).catch(() => {});
+            });
+          });
           resolve();
         });
       });
     }));
+}
+
+// Write an entry to the user's configured HTML log file in Downloads.
+// The file will be created if missing, and new entries appended by
+// downloading a small blob. We place entries inside a simple <ul> list.
+async function writeHtmlLog(url, title) {
+  try {
+    const cfg = await new Promise((res) => chrome.storage.sync.get('logFileName', res));
+    const filename = (cfg && cfg.logFileName) || 'closed-tabs.html';
+
+    // Read persisted entries to produce a full aggregated HTML file
+    const data = await new Promise((res) => chrome.storage.local.get('htmlLogEntries', res));
+    const entries = Array.isArray(data.htmlLogEntries) ? data.htmlLogEntries : [];
+
+    const listItems = entries
+      .map((e) => {
+        const safeTitle = escapeHtml(e.title || e.url || '');
+        const safeUrl = escapeHtml(e.url || '');
+        const when = new Date(e.ts || Date.now()).toLocaleString();
+        return `<li><a href="${safeUrl}">${safeTitle}</a> <span style="color:#666; font-size:11px;">(${when})</span></li>`;
+      })
+      .join('\n');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Closed tabs</title></head><body><h1>Closed tabs</h1><ul>${listItems}</ul></body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const urlObj = URL.createObjectURL(blob);
+
+    // Save the aggregated file, overwriting previous file of the same name when possible.
+    await new Promise((resolve, reject) => {
+      try {
+        chrome.downloads.download({ url: urlObj, filename, conflictAction: 'overwrite', saveAs: false }, (downloadId) => {
+          URL.revokeObjectURL(urlObj);
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(downloadId);
+        });
+      } catch (e) {
+        URL.revokeObjectURL(urlObj);
+        reject(e);
+      }
+    });
+  } catch (e) {
+    // ignore
+  }
 }
 
 async function restoreFromHistory(entry) {

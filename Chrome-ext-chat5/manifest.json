@@ -10,7 +10,8 @@
     "scripting",
     "notifications",
     "sessions",
-    "identity"
+     "identity",
+     "downloads"
   ],
   "host_permissions": [
     "http://*/*",

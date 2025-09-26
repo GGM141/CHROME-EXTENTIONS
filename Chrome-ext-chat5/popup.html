@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -71,8 +71,20 @@
 
   <hr />
 
-  <h4>Recent Closed Tabs</h4>
-  <div id="history"></div>
+  <h3>HTML Log</h3>
+  <label for="logFileName">Имя HTML файла:</label>
+  <input type="text" id="logFileName" placeholder="closed-tabs.html" title="Укажите имя файла для сохранения лога закрытых вкладок." />
+  <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+    <button id="btnChooseLogFile" type="button">Выбрать или создать файл</button>
+    <button id="btnResetLogFile" type="button">Сбросить доступ</button>
+  </div>
+  <div class="hint" id="logFilePathDisplay">Файл не выбран.</div>
+  <div class="hint" id="logFileStatus"></div>
+    <div class="hint">Note: The extension saves an aggregated HTML file with closed tab links into your Downloads folder (filename you set). The extension will request Downloads permission when you choose a file. Each save overwrites the previous file with the aggregated list.</div>
+
+  <hr />
+
+  <h4>Recent Closed Tabs</h4>  <div id="history"></div>
   <div style="margin-top:8px; display:flex; gap:8px;">
     <button id="clearHistory">Clear History</button>
   </div>

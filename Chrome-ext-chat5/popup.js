@@ -1,4 +1,4 @@
-// Popup script for Tab Monitor Closer.
+﻿// Popup script for Tab Monitor Closer.
 //
 // Configure thresholds, view history, and (optionally) send email via Gmail OAuth (launchWebAuthFlow).
 
@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const field = {
     thresholdHHMM: byId("thresholdHHMM"),
+    logFileName: byId("logFileName"),
   };
 
   // Load existing timeout (hours + minutes) and show as HH:MM
@@ -225,6 +226,53 @@ document.addEventListener("DOMContentLoaded", () => {
         btnTgTest.disabled = false;
         statusEl.textContent = (res && res.ok) ? "Sent to Telegram" : `Error: ${(res && res.error) || "failed"}`;
         setTimeout(() => (statusEl.textContent = prev || ""), 1500);
+      });
+    });
+  }
+  // ===== HTML Log UI =====
+  const logFileNameEl = byId('logFileName');
+  const btnChooseLogFile = byId('btnChooseLogFile');
+  const btnResetLogFile = byId('btnResetLogFile');
+  const logFilePathDisplay = byId('logFilePathDisplay');
+  const logFileStatus = byId('logFileStatus');
+
+  // Load saved filename/path
+  chrome.storage.sync.get(['logFileName', 'logAutoSave'], (cfg) => {
+    if (cfg.logFileName) logFileNameEl.value = cfg.logFileName;
+    if (cfg.logFileName) logFilePathDisplay.textContent = cfg.logFileName;
+  });
+
+  // Let user pick a filename (note: Chrome extensions can't open arbitrary file pickers; we'll request downloads permission and save to Downloads)
+  if (btnChooseLogFile) {
+    btnChooseLogFile.addEventListener('click', async () => {
+      // Use a simple prompt to get filename relative to Downloads
+      const name = prompt('Enter filename to save closed-tab HTML into (relative to Downloads):', logFileNameEl.value || 'closed-tabs.html');
+      if (!name) return;
+      logFileNameEl.value = name;
+      chrome.storage.sync.set({ logFileName: name }, () => {
+        logFilePathDisplay.textContent = name;
+        logFileStatus.textContent = 'Saved setting';
+        setTimeout(() => (logFileStatus.textContent = ''), 1200);
+      });
+      // Request downloads permission if not present
+      if (chrome.permissions) {
+        chrome.permissions.request({ permissions: ['downloads'] }, (granted) => {
+          if (!granted) {
+            logFileStatus.textContent = 'Downloads permission is required to write the file.';
+            setTimeout(() => (logFileStatus.textContent = ''), 3000);
+          }
+        });
+      }
+    });
+  }
+
+  if (btnResetLogFile) {
+    btnResetLogFile.addEventListener('click', () => {
+      chrome.storage.sync.remove(['logFileName'], () => {
+        logFileNameEl.value = '';
+        logFilePathDisplay.textContent = 'File not set.';
+        logFileStatus.textContent = 'Setting cleared';
+        setTimeout(() => (logFileStatus.textContent = ''), 1200);
       });
     });
   }
