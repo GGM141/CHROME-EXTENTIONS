@@ -81,6 +81,13 @@
   </div>
   <div class="hint" id="logFilePathDisplay">Файл не выбран.</div>
   <div class="hint" id="logFileStatus"></div>
+  <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+    <div id="downloadsPermStatus" class="hint">Downloads permission: <strong id="permIndicator">unknown</strong></div>
+    <button id="btnRequestDownloads" type="button">Grant downloads permission</button>
+  </div>
+  <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+    <label style="font-weight:normal;"><input type="checkbox" id="chkSaveAsEveryTime" /> Save As каждый раз (интерактивное сохранение)</label>
+  </div>
     <div class="hint">Note: The extension saves an aggregated HTML file with closed tab links into your Downloads folder (filename you set). The extension will request Downloads permission when you choose a file. Each save overwrites the previous file with the aggregated list.</div>
 
   <hr />

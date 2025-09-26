@@ -258,12 +258,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const suggested = (logFileNameEl.value && logFileNameEl.value.trim()) || 'closed-tabs.html';
       btnChooseLogFile.disabled = true;
       logFileStatus.textContent = 'Opening Save As...';
-      // Ask background to export aggregated HTML and show Save As dialog
-      chrome.runtime.sendMessage({ type: 'saveAsLogFile', suggestedName: suggested }, (res) => {
+      // Determine desired mode from Save As toggle
+      const saveAsMode = Boolean(byId('chkSaveAsEveryTime') && byId('chkSaveAsEveryTime').checked);
+      const msg = saveAsMode ? { type: 'saveAsLogFile', suggestedName: suggested } : { type: 'exportHtmlNow' };
+      chrome.runtime.sendMessage(msg, (res) => {
         btnChooseLogFile.disabled = false;
         if (res && res.ok) {
-          // Background will persist selected filename; show temporary message
-          logFileStatus.textContent = 'Save dialog closed. If you saved, filename will be stored.';
+          logFileStatus.textContent = saveAsMode ? 'Save dialog closed. If you saved, filename will be stored.' : 'Exported (overwrite) to Downloads.';
         } else {
           logFileStatus.textContent = `Save failed: ${(res && res.error) || 'unknown'}`;
         }
@@ -282,6 +283,40 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   }
+  // Downloads permission indicator and request button
+  const permIndicator = byId('permIndicator');
+  const btnRequestDownloads = byId('btnRequestDownloads');
+  async function refreshDownloadsPerm() {
+    if (!chrome.permissions) return;
+    chrome.permissions.contains({ permissions: ['downloads'] }, (has) => {
+      permIndicator.textContent = has ? 'granted' : 'not granted';
+    });
+  }
+  if (btnRequestDownloads) {
+    btnRequestDownloads.addEventListener('click', async () => {
+      if (!chrome.permissions) return;
+      btnRequestDownloads.disabled = true;
+      const granted = await new Promise((res) => chrome.permissions.request({ permissions: ['downloads'] }, (g) => res(Boolean(g))));
+      btnRequestDownloads.disabled = false;
+      refreshDownloadsPerm();
+      if (!granted) {
+        logFileStatus.textContent = 'Downloads permission required.';
+        setTimeout(() => (logFileStatus.textContent = ''), 1800);
+      }
+    });
+  }
+  refreshDownloadsPerm();
+
+  // Save As toggle: persist in sync
+  const chkSaveAs = byId('chkSaveAsEveryTime');
+  if (chkSaveAs) {
+    chrome.storage.sync.get('logSaveAsEveryTime', (cfg) => {
+      chkSaveAs.checked = Boolean(cfg.logSaveAsEveryTime);
+    });
+    chkSaveAs.addEventListener('change', () => {
+      chrome.storage.sync.set({ logSaveAsEveryTime: Boolean(chkSaveAs.checked) });
+    });
+  }
   // Export now button: request background to write aggregated HTML and download it.
   const btnExportHtml = byId('btnExportHtml');
   if (btnExportHtml) {
@@ -289,7 +324,9 @@ document.addEventListener("DOMContentLoaded", () => {
       btnExportHtml.disabled = true;
       const prev = logFileStatus.textContent;
       logFileStatus.textContent = 'Exporting...';
-      chrome.runtime.sendMessage({ type: 'exportHtmlNow' }, (res) => {
+      const saveAsMode = Boolean(byId('chkSaveAsEveryTime') && byId('chkSaveAsEveryTime').checked);
+      const msg = saveAsMode ? { type: 'saveAsLogFile', suggestedName: (logFileNameEl.value && logFileNameEl.value.trim()) || 'closed-tabs.html' } : { type: 'exportHtmlNow' };
+      chrome.runtime.sendMessage(msg, (res) => {
         btnExportHtml.disabled = false;
         if (res && res.ok) {
           logFileStatus.textContent = 'Export complete — check Downloads.';
