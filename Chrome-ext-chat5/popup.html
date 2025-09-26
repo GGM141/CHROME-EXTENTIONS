@@ -34,6 +34,11 @@
       font-size: 12px;
       color: #666;
     }
+    .row { margin-top: 8px; display:flex; gap:8px; }
+    .row.center { align-items:center; }
+    .controls { margin-top: 12px; display:flex; gap:8px; }
+    .file-display { font-weight: normal; color: #333; }
+    .small-note { font-size: 11px; color: #a33; margin-top:6px; }
   </style>
 </head>
 <body>
@@ -43,7 +48,7 @@
   <label for="thresholdHHMM">Timeout (HH:MM):</label>
   <input type="text" id="thresholdHHMM" placeholder="24:00" pattern="^\d{1,3}:[0-5]\d$" />
 
-  <div style="margin-top: 12px; display:flex; gap:8px;">
+  <div class="controls">
     <button id="save">Save</button>
     <button id="runNow">Run now</button>
   </div>
@@ -52,7 +57,7 @@
   <h3>Gmail</h3>
   <label for="notifyEmail">Recipient (email):</label>
   <input type="email" id="notifyEmail" placeholder="you@example.com" title="Email получателя для уведомлений. Если пусто — письма не отправляются." />
-  <div style="margin-top:8px; display:flex; gap:8px;">
+  <div class="row">
     <button id="btnGmailConnect" type="button" title="Авторизоваться через Google (launchWebAuthFlow)">Connect Gmail</button>
     <button id="btnGmailTest" type="button" title="Отправить пробное письмо на указанный email">Send test email</button>
   </div>
@@ -65,7 +70,7 @@
   <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." title="Токен бота из @BotFather. Хранится в chrome.storage.sync." />
   <label for="tgChatId">Chat ID or @channel:</label>
   <input type="text" id="tgChatId" placeholder="123456789 or @your_channel" title="ID личного чата/группы или @канал. Бот должен иметь право писать." />
-  <div style="margin-top:8px; display:flex; gap:8px;">
+  <div class="row">
     <button id="btnTgTest" type="button" title="Отправить пробное сообщение в Telegram">Send test to Telegram</button>
   </div>
   <div class="hint">Если токен или chat ID пустые — сообщения не отправляются. Для каналов чаще нужен формат -100XXXXXXXXXX или @channelname.</div>
@@ -75,29 +80,29 @@
   <h3>HTML Log</h3>
   <label for="logFileName">Имя HTML файла:</label>
   <input type="text" id="logFileName" placeholder="closed-tabs.html" title="Укажите имя файла для сохранения лога закрытых вкладок." />
-  <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+  <div class="row">
     <button id="btnChooseLogFile" type="button">Выбрать или создать файл</button>
     <button id="btnResetLogFile" type="button">Сбросить доступ</button>
     <button id="btnExportHtml" type="button">Экспорт сейчас</button>
   </div>
-  <div class="hint" id="logFilePathDisplay">Файл не выбран.</div>
+  <div class="hint">Current saved file: <span id="logFilePathDisplay" class="file-display">Файл не выбран.</span></div>
   <div class="hint" id="logFileStatus"></div>
-  <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+  <div class="row center">
     <div id="downloadsPermStatus" class="hint">Downloads permission: <strong id="permIndicator">unknown</strong></div>
     <button id="btnRequestDownloads" type="button">Grant downloads permission</button>
   </div>
-  <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-    <label style="font-weight:normal;"><input type="checkbox" id="chkSaveAsEveryTime" /> Save As каждый раз (интерактивное сохранение)</label>
+  <div class="row center">
+    <label><input type="checkbox" id="chkSaveAsEveryTime" /> Save As каждый раз (интерактивное сохранение)</label>
   </div>
-  <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-    <label style="font-weight:normal;"><input type="checkbox" id="chkExportOnClose" /> Export on close (automatic export when a tab is closed)</label>
+  <div class="row center">
+    <label><input type="checkbox" id="chkExportOnClose" /> Export on close (automatic export when a tab is closed)</label>
   </div>
-    <div class="hint">Note: The extension saves an aggregated HTML file with closed tab links into your Downloads folder (filename you set). The extension will request Downloads permission when you choose a file. Each save overwrites the previous file with the aggregated list.</div>
+  <div class="small-note">Warning: enabling "Export on close" may trigger frequent downloads when many tabs are closed; consider using Manual mode to avoid many files.</div>
 
   <hr />
 
   <h4>Recent Closed Tabs</h4>  <div id="history"></div>
-  <div style="margin-top:8px; display:flex; gap:8px;">
+  <div class="row">
     <button id="clearHistory">Clear History</button>
   </div>
   <p id="status"></p>

@@ -264,6 +264,10 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.runtime.sendMessage(msg, (res) => {
         btnChooseLogFile.disabled = false;
         if (res && res.ok) {
+          if (res.filename) {
+            logFilePathDisplay.textContent = `Saved: ${res.filename}`;
+            logFileNameEl.value = res.filename;
+          }
           logFileStatus.textContent = saveAsMode ? 'Save dialog closed. If you saved, filename will be stored.' : 'Exported (overwrite) to Downloads.';
         } else {
           logFileStatus.textContent = `Save failed: ${(res && res.error) || 'unknown'}`;
@@ -340,6 +344,10 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.runtime.sendMessage(msg, (res) => {
         btnExportHtml.disabled = false;
         if (res && res.ok) {
+          if (res.filename) {
+            logFilePathDisplay.textContent = `Saved: ${res.filename}`;
+            logFileNameEl.value = res.filename;
+          }
           logFileStatus.textContent = 'Export complete — check Downloads.';
         } else {
           logFileStatus.textContent = `Export failed: ${(res && res.error) || 'unknown'}`;
