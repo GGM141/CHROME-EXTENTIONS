@@ -28,7 +28,9 @@ chrome.runtime.onInstalled.addListener(() => {
     const openTimes = {};
     const now = Date.now();
     tabs.forEach((tab) => {
-      openTimes[tab.id] = now;
+      // Use lastAccessed when available so tabs that were opened earlier
+      // before the extension was installed can be evaluated immediately.
+      openTimes[tab.id] = tab.lastAccessed || now;
     });
     chrome.storage.local.set({ openTimes });
   });
@@ -55,6 +57,19 @@ chrome.runtime.onInstalled.addListener(() => {
 // Ensure alarm exists on browser startup as well.
 chrome.runtime.onStartup.addListener(() => {
   ensureCheckAlarm();
+  // Ensure we have sensible openTimes for existing tabs on browser startup.
+  chrome.tabs.query({}, (tabs) => {
+    chrome.storage.local.get('openTimes', (data) => {
+      const openTimes = data.openTimes || {};
+      const now = Date.now();
+      tabs.forEach((tab) => {
+        if (!openTimes[tab.id]) {
+          openTimes[tab.id] = tab.lastAccessed || now;
+        }
+      });
+      chrome.storage.local.set({ openTimes });
+    });
+  });
   try {
     chrome.action.setBadgeBackgroundColor({ color: "#5C6BC0" });
   } catch (e) {
