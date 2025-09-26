@@ -452,7 +452,14 @@ function addToHistory(url, title, restore) {
             arr.unshift({ url, title, ts: Date.now() });
             if (arr.length > MAX_HISTORY) arr.length = MAX_HISTORY;
             chrome.storage.local.set({ htmlLogEntries: arr }, () => {
-              writeHtmlLog(url, title).catch(() => {});
+              // Only perform automatic export (download) if user enabled it in settings
+              chrome.storage.sync.get('logExportOnClose', (cfg) => {
+                const enabled = cfg.logExportOnClose == null ? true : Boolean(cfg.logExportOnClose);
+                if (enabled) {
+                  // Non-interactive export (overwrite)
+                  writeHtmlLog(url, title).catch(() => {});
+                }
+              });
             });
           });
           resolve();

@@ -317,6 +317,17 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.storage.sync.set({ logSaveAsEveryTime: Boolean(chkSaveAs.checked) });
     });
   }
+  // Export on close toggle: default true
+  const chkExportOnClose = byId('chkExportOnClose');
+  if (chkExportOnClose) {
+    chrome.storage.sync.get('logExportOnClose', (cfg) => {
+      const v = cfg.logExportOnClose;
+      chkExportOnClose.checked = (v == null) ? true : Boolean(v);
+    });
+    chkExportOnClose.addEventListener('change', () => {
+      chrome.storage.sync.set({ logExportOnClose: Boolean(chkExportOnClose.checked) });
+    });
+  }
   // Export now button: request background to write aggregated HTML and download it.
   const btnExportHtml = byId('btnExportHtml');
   if (btnExportHtml) {
