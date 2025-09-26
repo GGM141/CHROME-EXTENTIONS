@@ -276,5 +276,23 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   }
+  // Export now button: request background to write aggregated HTML and download it.
+  const btnExportHtml = byId('btnExportHtml');
+  if (btnExportHtml) {
+    btnExportHtml.addEventListener('click', () => {
+      btnExportHtml.disabled = true;
+      const prev = logFileStatus.textContent;
+      logFileStatus.textContent = 'Exporting...';
+      chrome.runtime.sendMessage({ type: 'exportHtmlNow' }, (res) => {
+        btnExportHtml.disabled = false;
+        if (res && res.ok) {
+          logFileStatus.textContent = 'Export complete — check Downloads.';
+        } else {
+          logFileStatus.textContent = `Export failed: ${(res && res.error) || 'unknown'}`;
+        }
+        setTimeout(() => (logFileStatus.textContent = prev || ''), 2500);
+      });
+    });
+  }
   // ===== /Telegram UI =====
 });

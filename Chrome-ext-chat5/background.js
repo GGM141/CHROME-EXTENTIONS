@@ -615,6 +615,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return;
   }
+  if (msg.type === "exportHtmlNow") {
+    (async () => {
+      try {
+        await writeHtmlLog();
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && (e.message || e)) });
+      }
+    })();
+    return true;
+  }
   if (msg.type === "clearHistory") {
     chrome.storage.local.set({ closedHistory: [] }, () =>
       sendResponse({ ok: true }),
