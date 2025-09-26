@@ -490,19 +490,19 @@ async function writeHtmlLog(url, title) {
       .join('\n');
 
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Closed tabs</title></head><body><h1>Closed tabs</h1><ul>${listItems}</ul></body></html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const urlObj = URL.createObjectURL(blob);
+    // Create a base64 data URL because service worker context may not support
+    // URL.createObjectURL for Blobs. downloads.download accepts data: URLs.
+    const base64 = base64EncodeUtf8(html);
+    const dataUrl = `data:text/html;charset=utf-8;base64,${base64}`;
 
     // Save the aggregated file, overwriting previous file of the same name when possible.
     await new Promise((resolve, reject) => {
       try {
-        chrome.downloads.download({ url: urlObj, filename, conflictAction: 'overwrite', saveAs: false }, (downloadId) => {
-          URL.revokeObjectURL(urlObj);
+        chrome.downloads.download({ url: dataUrl, filename, conflictAction: 'overwrite', saveAs: false }, (downloadId) => {
           if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
           resolve(downloadId);
         });
       } catch (e) {
-        URL.revokeObjectURL(urlObj);
         reject(e);
       }
     });
@@ -648,19 +648,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           })
           .join('\n');
         const html = `<!doctype html><html><head><meta charset="utf-8"><title>Closed tabs</title></head><body><h1>Closed tabs</h1><ul>${listItems}</ul></body></html>`;
-        const blob = new Blob([html], { type: 'text/html' });
-        const urlObj = URL.createObjectURL(blob);
-
+        // data URL fallback for service worker context
         const suggested = String(msg.suggestedName || 'closed-tabs.html');
+        const base64 = base64EncodeUtf8(html);
+        const dataUrl = `data:text/html;charset=utf-8;base64,${base64}`;
         const downloadId = await new Promise((resolve, reject) => {
           try {
-            chrome.downloads.download({ url: urlObj, filename: suggested, saveAs: true }, (id) => {
-              URL.revokeObjectURL(urlObj);
+            chrome.downloads.download({ url: dataUrl, filename: suggested, saveAs: true }, (id) => {
               if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
               resolve(id);
             });
           } catch (e) {
-            URL.revokeObjectURL(urlObj);
             reject(e);
           }
         });
@@ -785,6 +783,14 @@ function base64UrlEncodeUtf8(str) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+// Regular base64 (not URL-safe) encoding of UTF-8 string for data: URI usage
+function base64EncodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str || '');
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 
 function escapeHtml(s) {
