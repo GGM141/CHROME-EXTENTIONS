@@ -626,6 +626,77 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true;
   }
+  if (msg.type === 'saveAsLogFile') {
+    (async () => {
+      try {
+        // Build aggregated HTML (reuse writeHtmlLog internals but return blob URL)
+        const data = await new Promise((res) => chrome.storage.local.get('htmlLogEntries', res));
+        const entries = Array.isArray(data.htmlLogEntries) ? data.htmlLogEntries : [];
+        const listItems = entries
+          .map((e) => {
+            const safeTitle = escapeHtml(e.title || e.url || '');
+            const safeUrl = escapeHtml(e.url || '');
+            const when = new Date(e.ts || Date.now()).toLocaleString();
+            return `<li><a href="${safeUrl}">${safeTitle}</a> <span style="color:#666; font-size:11px;">(${when})</span></li>`;
+          })
+          .join('\n');
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>Closed tabs</title></head><body><h1>Closed tabs</h1><ul>${listItems}</ul></body></html>`;
+        const blob = new Blob([html], { type: 'text/html' });
+        const urlObj = URL.createObjectURL(blob);
+
+        const suggested = String(msg.suggestedName || 'closed-tabs.html');
+        const downloadId = await new Promise((resolve, reject) => {
+          try {
+            chrome.downloads.download({ url: urlObj, filename: suggested, saveAs: true }, (id) => {
+              URL.revokeObjectURL(urlObj);
+              if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+              resolve(id);
+            });
+          } catch (e) {
+            URL.revokeObjectURL(urlObj);
+            reject(e);
+          }
+        });
+
+        // Wait for the download to complete (or be interrupted) to capture final filename
+        const final = await new Promise((resolve) => {
+          const handler = (delta) => {
+            if (delta.id !== downloadId) return;
+            if (delta.state && delta.state.current === 'complete') {
+              chrome.downloads.search({ id: downloadId }, (items) => {
+                chrome.downloads.onChanged.removeListener(handler);
+                resolve({ ok: true, items });
+              });
+            } else if (delta.state && (delta.state.current === 'interrupted')) {
+              chrome.downloads.onChanged.removeListener(handler);
+              resolve({ ok: false, error: 'interrupted' });
+            }
+          };
+          chrome.downloads.onChanged.addListener(handler);
+          // Timeout fallback: stop waiting after 20s
+          setTimeout(() => {
+            chrome.downloads.onChanged.removeListener(handler);
+            resolve({ ok: false, error: 'timeout' });
+          }, 20000);
+        });
+
+        if (final && final.ok && final.items && final.items[0]) {
+          const filename = final.items[0].filename || final.items[0].finalUrl || suggested;
+          // Persist the filename base (only the file part) into sync
+          const parts = filename.split('\\');
+          const basename = parts[parts.length - 1];
+          chrome.storage.sync.set({ logFileName: basename }, () => {
+            sendResponse({ ok: true, filename: basename });
+          });
+          return;
+        }
+        sendResponse({ ok: false, error: final && final.error });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && (e.message || e)) });
+      }
+    })();
+    return true;
+  }
   if (msg.type === "clearHistory") {
     chrome.storage.local.set({ closedHistory: [] }, () =>
       sendResponse({ ok: true }),

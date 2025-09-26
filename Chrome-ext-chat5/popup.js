@@ -245,24 +245,30 @@ document.addEventListener("DOMContentLoaded", () => {
   // Let user pick a filename (note: Chrome extensions can't open arbitrary file pickers; we'll request downloads permission and save to Downloads)
   if (btnChooseLogFile) {
     btnChooseLogFile.addEventListener('click', async () => {
-      // Use a simple prompt to get filename relative to Downloads
-      const name = prompt('Enter filename to save closed-tab HTML into (relative to Downloads):', logFileNameEl.value || 'closed-tabs.html');
-      if (!name) return;
-      logFileNameEl.value = name;
-      chrome.storage.sync.set({ logFileName: name }, () => {
-        logFilePathDisplay.textContent = name;
-        logFileStatus.textContent = 'Saved setting';
-        setTimeout(() => (logFileStatus.textContent = ''), 1200);
-      });
       // Request downloads permission if not present
       if (chrome.permissions) {
-        chrome.permissions.request({ permissions: ['downloads'] }, (granted) => {
-          if (!granted) {
-            logFileStatus.textContent = 'Downloads permission is required to write the file.';
-            setTimeout(() => (logFileStatus.textContent = ''), 3000);
-          }
-        });
+        const ok = await new Promise((res) => chrome.permissions.request({ permissions: ['downloads'] }, (granted) => res(Boolean(granted))));
+        if (!ok) {
+          logFileStatus.textContent = 'Downloads permission is required to save interactively.';
+          setTimeout(() => (logFileStatus.textContent = ''), 3000);
+          return;
+        }
       }
+
+      const suggested = (logFileNameEl.value && logFileNameEl.value.trim()) || 'closed-tabs.html';
+      btnChooseLogFile.disabled = true;
+      logFileStatus.textContent = 'Opening Save As...';
+      // Ask background to export aggregated HTML and show Save As dialog
+      chrome.runtime.sendMessage({ type: 'saveAsLogFile', suggestedName: suggested }, (res) => {
+        btnChooseLogFile.disabled = false;
+        if (res && res.ok) {
+          // Background will persist selected filename; show temporary message
+          logFileStatus.textContent = 'Save dialog closed. If you saved, filename will be stored.';
+        } else {
+          logFileStatus.textContent = `Save failed: ${(res && res.error) || 'unknown'}`;
+        }
+        setTimeout(() => (logFileStatus.textContent = ''), 2500);
+      });
     });
   }
 
