@@ -1,0 +1,75 @@
+const el = (id) => document.getElementById(id);
+const ui = {
+  out: el("signedOut"),
+  in: el("signedIn"),
+  to: el("to"),
+  subject: el("subject"),
+  message: el("message"),
+  status: el("status"),
+  btnSignIn: el("btnSignIn"),
+  btnSend: el("btnSend"),
+  btnSignOut: el("btnSignOut"),
+};
+
+function setStatus(text, ok) {
+  ui.status.textContent = text || "";
+  ui.status.className = "status " + (ok === true ? "ok" : ok === false ? "err" : "");
+}
+
+function setSignedIn(on) {
+  ui.out.classList.toggle("hidden", !!on);
+  ui.in.classList.toggle("hidden", !on);
+  if (!on) setStatus("", null);
+}
+
+async function pingSilent() {
+  // Негарантированно: можно попробовать проверить токен через фоновый запрос,
+  // но для простоты просто считаем, что вход нужен.
+  setSignedIn(false);
+}
+
+ui.btnSignIn.addEventListener("click", async () => {
+  setStatus("Входим...", null);
+  const resp = await chrome.runtime.sendMessage({ type: "auth.signIn" });
+  if (resp?.ok) {
+    setSignedIn(true);
+    setStatus("Готово. Можно отправлять письма.", true);
+  } else {
+    setStatus(resp?.error || "Ошибка входа", false);
+  }
+});
+
+ui.btnSignOut.addEventListener("click", async () => {
+  setStatus("Выходим...", null);
+  const resp = await chrome.runtime.sendMessage({ type: "auth.signOut" });
+  if (resp?.ok) {
+    setSignedIn(false);
+    setStatus("Вышли из аккаунта.", true);
+  } else {
+    setStatus(resp?.error || "Ошибка выхода", false);
+  }
+});
+
+ui.btnSend.addEventListener("click", async () => {
+  const to = ui.to.value.trim();
+  const subject = ui.subject.value.trim();
+  const message = ui.message.value;
+
+  if (!to) return setStatus("Поле To обязательно.", false);
+  setStatus("Отправляем...", null);
+
+  const resp = await chrome.runtime.sendMessage({
+    type: "gmail.send",
+    payload: { to, subject, body: message }
+  });
+
+  if (resp?.ok) {
+    ui.subject.value = "";
+    ui.message.value = "";
+    setStatus("Письмо отправлено ?", true);
+  } else {
+    setStatus(resp?.error || "Не удалось отправить письмо.", false);
+  }
+});
+
+pingSilent();

@@ -1,0 +1,30 @@
+# Gmail Sender (MV3)
+
+Мини-расширение для входа через Google и отправки писем через Gmail API (`users.messages.send`) из popup через background.
+
+## Шаги настройки
+
+1. **Включите Gmail API**
+   - Google Cloud Console > APIs & Services > Library > Gmail API > Enable.
+
+2. **Создайте OAuth Client ID**
+   - APIs & Services > Credentials > Create Credentials > **OAuth client ID**.
+   - Тип: **Chrome Extension** (если доступно для вашего проекта). Вставьте **Extension ID** после установки черновой версии (см. ниже).
+   - Скопируйте `Client ID` и вставьте в `manifest.json` в `oauth2.client_id`.
+   - *Примечание:* Если тип Chrome Extension недоступен, можно использовать поток `launchWebAuthFlow` с типом **Web application** и разрешённым редиректом:
+     `https://<EXTENSION_ID>.chromiumapp.org/`
+     Но текущий проект использует `chrome.identity.getAuthToken`, поэтому предпочтителен Client ID для Extension.
+
+3. **Соберите и установите**
+   - Откройте `chrome://extensions` > включите **Developer mode** > **Load unpacked** > выберите папку проекта.
+   - После вставки корректного `client_id` перезагрузите расширение.
+
+4. **Проверка**
+   - Нажмите значок расширения > «Войти с Google».
+   - Заполните поля `To`, `Subject`, `Message` > «Отправить».
+   - При успехе увидите «Письмо отправлено ?».
+
+## Тройблшутинг
+- **401/invalid_grant/insufficient permissions**: проверьте, что включён Gmail API, client_id корректен, скоуп ровно `https://www.googleapis.com/auth/gmail.send`. Попробуйте выйти/войти заново.
+- **Верификация Google**: публичным расширениям со скоупами может потребоваться проверка.
+- **Отправка HTML**: поменяйте `Content-Type` на `text/html; charset=utf-8` и сформируйте MIME-тело как HTML.

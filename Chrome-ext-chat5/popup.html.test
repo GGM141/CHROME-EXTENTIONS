@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Gmail Sender</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 14px; width: 320px; }
+    .hidden { display: none; }
+    input, textarea { width: 100%; margin: 6px 0; padding: 6px; }
+    button { padding: 8px 10px; }
+    .row { margin: 8px 0; }
+    .status { margin-top: 8px; min-height: 20px; }
+    .ok { color: #1a7f37; }
+    .err { color: #c62828; }
+  </style>
+</head>
+<body>
+  <div id="signedOut">
+    <p>Для отправки писем войдите в Google.</p>
+    <button id="btnSignIn">Войти с Google</button>
+  </div>
+
+  <div id="signedIn" class="hidden">
+    <div class="row">
+      <label>To</label>
+      <input id="to" type="email" placeholder="user@example.com" />
+    </div>
+    <div class="row">
+      <label>Subject</label>
+      <input id="subject" type="text" placeholder="Hello from extension" />
+    </div>
+    <div class="row">
+      <label>Message</label>
+      <textarea id="message" rows="6" placeholder="Привет! Это письмо из расширения."></textarea>
+    </div>
+    <div class="row">
+      <button id="btnSend">Send</button>
+      <button id="btnSignOut" style="float:right">Cancel</button>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

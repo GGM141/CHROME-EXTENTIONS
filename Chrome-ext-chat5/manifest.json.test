@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Sender (Popup + Background)",
+  "version": "1.0.0",
+  "action": { "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["identity"],
+  "host_permissions": ["https://gmail.googleapis.com/*"],
+  "oauth2": {
+    "client_id": "301187248193-q8ju2fgq3718mp12j4mstnscj0rpi897.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/gmail.send"]
+  }
+}

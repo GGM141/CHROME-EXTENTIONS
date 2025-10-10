@@ -10,17 +10,25 @@
     "scripting",
     "notifications",
     "sessions",
-      "downloads"
+    "downloads",
+    "identity",
+    "identity.email"
   ],
   "host_permissions": [
     "http://*/*",
-    "https://*/*"
-  ]
+    "https://*/*",
+    "https://gmail.googleapis.com/*"
   ],
+  "oauth2": {
+    "client_id": "301187248193-q8ju2fgq3718mp12j4mstnscj0rpi897.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
   "background": {
     "service_worker": "background.js"
   },
-  
   "action": {
     "default_title": "Tab Monitor Closer",
     "default_popup": "popup.html"

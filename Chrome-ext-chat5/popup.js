@@ -1,254 +1,468 @@
-﻿// Popup script for Tab Monitor Closer.
+// Popup script for Tab Monitor Closer.
 //
-// Configure thresholds, view history, and (optionally) send email via Gmail OAuth (launchWebAuthFlow).
+// Configure thresholds, review history, manage Gmail/Telegram notifications,
+// and control HTML log export behaviour from the popup UI.
 
 document.addEventListener("DOMContentLoaded", () => {
   const byId = (id) => document.getElementById(id);
   const statusEl = byId("status");
   const historyEl = byId("history");
 
-  const field = {
-    thresholdHHMM: byId("thresholdHHMM"),
-    logFileName: byId("logFileName"),
-  };
+  const thresholdEl = byId("thresholdHHMM");
+  const saveBtn = byId("save");
+  const runNowBtn = byId("runNow");
+  const clearHistoryBtn = byId("clearHistory");
 
-  // Load existing timeout (hours + minutes) and show as HH:MM
-  chrome.storage.sync.get(["thresholdHours", "thresholdMinutes"], (cfg) => {
-    const hours = Number.isFinite(Number(cfg.thresholdHours))
-      ? Number(cfg.thresholdHours)
-      : 24;
-    const minutes = Number.isFinite(Number(cfg.thresholdMinutes))
-      ? Math.max(0, Number(cfg.thresholdMinutes))
-      : 0;
-    const hh = String(hours);
-    const mm = String(minutes).padStart(2, "0");
-    field.thresholdHHMM.value = `${hh}:${mm}`;
-  byId("save").addEventListener("click", () => {
-    chrome.storage.sync.set(
-    const prev = statusEl.textContent;
-          const title = (e.title && e.title.trim()) || e.url;
-          const safeTitle = title.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          const safeUrl = e.url.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          return `
-          <div style="display:flex; gap:6px; align-items:center; margin:6px 0;">
-            <div style="flex:1; min-width:0;">
-              <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeTitle}">${safeTitle}</div>
-              <div style="font-size:12px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeUrl}">${safeUrl}</div>
-              <div style="font-size:11px; color:#888;">${when}</div>
-            </div>
-            <div style="display:flex; gap:6px;">
-              <button data-idx="${idx}" class="restore">Restore</button>
-            </div>
-          </div>`;
-        })
-        .join("");
-      historyEl.innerHTML = html;
-      historyEl.querySelectorAll("button.restore").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const idx = Number(btn.getAttribute("data-idx"));
-          btn.disabled = true;
-          chrome.runtime.sendMessage(
-            { type: "restoreClosed", index: idx },
-            (res) => {
-              btn.disabled = false;
-              if (!res || !res.ok) {
-                statusEl.textContent = "Restore failed";
-                setTimeout(() => (statusEl.textContent = ""), 1500);
-              } else {
-                // Refresh history to reflect removal
-                chrome.runtime.sendMessage(
-                  { type: "getClosedHistory" },
-                  (r) => {
-                    if (r && r.ok) renderHistory(r.history || []);
-                  },
-                );
-              }
-            },
-          );
-        });
-      });
-      // No domain settings in simplified UI.
-    }
+  const notifyEmailEl = byId("notifyEmail");
+  const gmailStatusEl = byId("gmailStatus");
+  const btnGmailConnect = byId("btnGmailConnect");
+  const btnGmailSignOut = byId("btnGmailSignOut");
+  const btnGmailTest = byId("btnGmailTest");
 
-  chrome.runtime.sendMessage({ type: "getClosedHistory" }, (res) => {
-    if (res && res.ok) renderHistory(res.history || []);
-    else historyEl.textContent = "Failed to load history";
-  });
-  chrome.runtime.sendMessage({ type: "resetBadge" }, () => {});
-
-  byId("clearHistory").addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "clearHistory" }, (res) => {
-      if (res && res.ok) renderHistory([]);
-    });
-  });
-
-  // ===== /Gmail UI =====
-  // ===== Telegram UI =====
   const tgTokenEl = byId("tgToken");
   const tgChatIdEl = byId("tgChatId");
   const btnTgTest = byId("btnTgTest");
 
-  if (tgTokenEl || tgChatIdEl) {
-    chrome.storage.sync.get(["tgToken", "tgChatId"], ({ tgToken, tgChatId }) => {
-      if (tgTokenEl && tgToken) tgTokenEl.value = tgToken;
-      if (tgChatIdEl && tgChatId) tgChatIdEl.value = tgChatId;
+  const logFileNameEl = byId("logFileName");
+  const logFilePathDisplay = byId("logFilePathDisplay");
+  const logFileStatus = byId("logFileStatus");
+  const btnChooseLogFile = byId("btnChooseLogFile");
+  const btnResetLogFile = byId("btnResetLogFile");
+  const btnExportHtml = byId("btnExportHtml");
+  const permIndicator = byId("permIndicator");
+  const btnRequestDownloads = byId("btnRequestDownloads");
+  const chkSaveAsEveryTime = byId("chkSaveAsEveryTime");
+  const chkExportOnClose = byId("chkExportOnClose");
+
+  const sendMessage = (message) =>
+    new Promise((resolve) => {
+      chrome.runtime.sendMessage(message, (resp) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+        } else {
+          resolve(resp || { ok: false, error: "No response" });
+        }
+      });
     });
-    if (tgTokenEl) tgTokenEl.addEventListener("change", () => {
+
+  const flashStatus = (text, timeout = 2000) => {
+    if (!statusEl) return;
+    statusEl.textContent = text || "";
+    if (timeout > 0) {
+      setTimeout(() => {
+        if (statusEl.textContent === text) statusEl.textContent = "";
+      }, timeout);
+    }
+  };
+
+  const escapeHtml = (str) =>
+    String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const parseThreshold = (value) => {
+    if (!value) return null;
+    const match = /^(\d{1,3}):([0-5]\d)$/.exec(value.trim());
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    return { hours, minutes };
+  };
+
+  const populateInitialFields = () => {
+    chrome.storage.sync.get(
+      [
+        "thresholdHours",
+        "thresholdMinutes",
+        "notifyEmail",
+        "tgToken",
+        "tgChatId",
+        "logFileName",
+        "logSaveAsEveryTime",
+        "logExportOnClose"
+      ],
+      (cfg) => {
+        const hours = Number.isFinite(Number(cfg.thresholdHours))
+          ? Number(cfg.thresholdHours)
+          : 24;
+        const minutes = Number.isFinite(Number(cfg.thresholdMinutes))
+          ? Math.max(0, Number(cfg.thresholdMinutes))
+          : 0;
+        if (thresholdEl) {
+          const hh = String(hours);
+          const mm = String(minutes).padStart(2, "0");
+          thresholdEl.value = `${hh}:${mm}`;
+        }
+
+        if (notifyEmailEl && cfg.notifyEmail) {
+          notifyEmailEl.value = cfg.notifyEmail;
+        }
+
+        if (tgTokenEl && cfg.tgToken) tgTokenEl.value = cfg.tgToken;
+        if (tgChatIdEl && cfg.tgChatId) tgChatIdEl.value = cfg.tgChatId;
+
+        if (logFileNameEl && cfg.logFileName) {
+          logFileNameEl.value = cfg.logFileName;
+          if (logFilePathDisplay) logFilePathDisplay.textContent = cfg.logFileName;
+        }
+        if (chkSaveAsEveryTime) {
+          chkSaveAsEveryTime.checked = Boolean(cfg.logSaveAsEveryTime);
+        }
+        if (chkExportOnClose) {
+          const v = cfg.logExportOnClose;
+          chkExportOnClose.checked = v == null ? true : Boolean(v);
+        }
+      }
+    );
+  };
+
+  const renderHistory = (list) => {
+    if (!historyEl) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      historyEl.innerHTML = "<p>No closed tabs yet.</p>";
+      return;
+    }
+    const now = Date.now();
+    const html = list
+      .map((entry, idx) => {
+        const age = now - (entry.ts || 0);
+        const when =
+          age < 60000
+            ? "just now"
+            : age < 3600000
+            ? `${Math.floor(age / 60000)}m ago`
+            : new Date(entry.ts || Date.now()).toLocaleString();
+        const title = (entry.title && entry.title.trim()) || entry.url || "";
+        const safeTitle = escapeHtml(title);
+        const safeUrl = escapeHtml(entry.url || "");
+        return `
+        <div class="history-row" style="display:flex; gap:6px; align-items:center; margin:6px 0;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeTitle}">${safeTitle}</div>
+            <div style="font-size:12px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeUrl}">${safeUrl}</div>
+            <div style="font-size:11px; color:#888;">${escapeHtml(when)}</div>
+          </div>
+          <div>
+            <button data-idx="${idx}" class="restore">Restore</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+    historyEl.innerHTML = html;
+    historyEl.querySelectorAll("button.restore").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const idx = Number(btn.getAttribute("data-idx"));
+        btn.disabled = true;
+        const res = await sendMessage({ type: "restoreClosed", index: idx });
+        btn.disabled = false;
+        if (!res || !res.ok) {
+          flashStatus(`Restore failed: ${(res && res.error) || "unknown"}`, 2000);
+        }
+        await refreshHistory();
+      });
+    });
+  };
+
+  const refreshHistory = async () => {
+    const res = await sendMessage({ type: "getClosedHistory" });
+    if (res && res.ok) {
+      renderHistory(res.history || []);
+    } else if (historyEl) {
+      historyEl.textContent = "Failed to load history.";
+    }
+  };
+
+  const refreshDownloadsPerm = () => {
+    if (!chrome.permissions || !permIndicator) return;
+    chrome.permissions.contains(
+      { permissions: ["downloads"] },
+      (granted) => {
+        if (chrome.runtime.lastError) return;
+        permIndicator.textContent = granted ? "granted" : "not granted";
+      }
+    );
+  };
+
+  const updateGmailStatus = async () => {
+    if (!gmailStatusEl) return;
+    gmailStatusEl.textContent = "Checking Gmail status…";
+    const res = await sendMessage({ type: "gmail-status" });
+    const ok = Boolean(res && res.ok && res.signedIn);
+    if (ok) {
+      const email = res.email ? `Connected as: ${res.email}` : "Gmail connected";
+      gmailStatusEl.textContent = email;
+    } else {
+      gmailStatusEl.textContent = res && res.error
+        ? `Not connected (${res.error})`
+        : "Not connected to Gmail";
+    }
+    if (btnGmailTest) btnGmailTest.disabled = !ok;
+    if (btnGmailSignOut) btnGmailSignOut.disabled = !ok;
+  };
+
+  // Threshold save handler
+  if (saveBtn && thresholdEl) {
+    saveBtn.addEventListener("click", () => {
+      const parsed = parseThreshold(thresholdEl.value);
+      if (!parsed) {
+        flashStatus("Invalid time format. Use HH:MM", 2000);
+        return;
+      }
+      chrome.storage.sync.set(
+        {
+          thresholdHours: parsed.hours,
+          thresholdMinutes: parsed.minutes
+        },
+        () => {
+          flashStatus("Settings saved", 1500);
+          chrome.runtime.sendMessage({ type: "resetBadge" }, () => {});
+        }
+      );
+    });
+  }
+
+  if (runNowBtn) {
+    runNowBtn.addEventListener("click", async () => {
+      runNowBtn.disabled = true;
+      const res = await sendMessage({ type: "runCheckNow" });
+      runNowBtn.disabled = false;
+      if (res && res.ok) {
+        flashStatus("Check started", 1500);
+      } else {
+        flashStatus(`Failed to start: ${(res && res.error) || "unknown"}`, 2000);
+      }
+    });
+  }
+
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener("click", async () => {
+      clearHistoryBtn.disabled = true;
+      const res = await sendMessage({ type: "clearHistory" });
+      clearHistoryBtn.disabled = false;
+      if (res && res.ok) {
+        await refreshHistory();
+        flashStatus("History cleared", 1500);
+      } else {
+        flashStatus(`Failed: ${(res && res.error) || "unknown"}`, 2000);
+      }
+    });
+  }
+
+  // Gmail UI wiring
+  if (notifyEmailEl) {
+    notifyEmailEl.addEventListener("change", () => {
+      const value = (notifyEmailEl.value || "").trim();
+      chrome.storage.sync.set({ notifyEmail: value || "" });
+    });
+  }
+
+  if (btnGmailConnect) {
+    btnGmailConnect.addEventListener("click", async () => {
+      btnGmailConnect.disabled = true;
+      if (gmailStatusEl) gmailStatusEl.textContent = "Authorizing Gmail…";
+      const res = await sendMessage({ type: "gmail-connect" });
+      btnGmailConnect.disabled = false;
+      if (res && res.ok) {
+        await updateGmailStatus();
+      } else {
+        gmailStatusEl.textContent = `Authorization failed: ${(res && res.error) || "unknown"}`;
+      }
+    });
+  }
+
+  if (btnGmailSignOut) {
+    btnGmailSignOut.addEventListener("click", async () => {
+      btnGmailSignOut.disabled = true;
+      const res = await sendMessage({ type: "gmail-signOut" });
+      if (!(res && res.ok) && gmailStatusEl) {
+        gmailStatusEl.textContent = `Failed to sign out: ${(res && res.error) || "unknown"}`;
+      }
+      await updateGmailStatus();
+    });
+  }
+
+  if (btnGmailTest) {
+    btnGmailTest.addEventListener("click", async () => {
+      const to = (notifyEmailEl && notifyEmailEl.value || "").trim();
+      if (!to) {
+        flashStatus("Enter recipient e-mail first", 2000);
+        return;
+      }
+      btnGmailTest.disabled = true;
+      const res = await sendMessage({
+        type: "gmail-send",
+        payload: {
+          to,
+          subject: "Tab Monitor Closer: test",
+          body: "Test message from the Tab Monitor Closer extension."
+        }
+      });
+      btnGmailTest.disabled = false;
+      if (res && res.ok) {
+        flashStatus("Test email sent", 2000);
+      } else {
+        flashStatus(`Send failed: ${(res && res.error) || "unknown"}`, 2500);
+      }
+    });
+  }
+
+  // Telegram UI
+  if (tgTokenEl) {
+    tgTokenEl.addEventListener("change", () => {
       chrome.storage.sync.set({ tgToken: (tgTokenEl.value || "").trim() });
     });
-    if (tgChatIdEl) tgChatIdEl.addEventListener("change", () => {
+  }
+  if (tgChatIdEl) {
+    tgChatIdEl.addEventListener("change", () => {
       chrome.storage.sync.set({ tgChatId: (tgChatIdEl.value || "").trim() });
     });
   }
-
   if (btnTgTest) {
-    btnTgTest.addEventListener("click", () => {
+    btnTgTest.addEventListener("click", async () => {
       const token = (tgTokenEl && tgTokenEl.value || "").trim();
       const chatId = (tgChatIdEl && tgChatIdEl.value || "").trim();
       if (!token || !chatId) {
-        statusEl.textContent = "Enter Telegram token and chat ID";
-        setTimeout(() => (statusEl.textContent = ""), 1800);
+        flashStatus("Enter Telegram token and chat ID", 2000);
         return;
       }
       btnTgTest.disabled = true;
-      const prev = statusEl.textContent;
-      statusEl.textContent = "Sending to Telegram...";
-      chrome.runtime.sendMessage({
+      flashStatus("Sending to Telegram…", 1500);
+      const res = await sendMessage({
         type: "telegram-send",
         payload: { text: "<b>Test</b> message from Tab Monitor Closer" }
-      }, (res) => {
-        btnTgTest.disabled = false;
-        statusEl.textContent = (res && res.ok) ? "Sent to Telegram" : `Error: ${(res && res.error) || "failed"}`;
-        setTimeout(() => (statusEl.textContent = prev || ""), 1500);
       });
+      btnTgTest.disabled = false;
+      if (res && res.ok) {
+        flashStatus("Sent to Telegram", 2000);
+      } else {
+        flashStatus(`Telegram error: ${(res && res.error) || "failed"}`, 2500);
+      }
     });
   }
-  // ===== HTML Log UI =====
-  const logFileNameEl = byId('logFileName');
-  const btnChooseLogFile = byId('btnChooseLogFile');
-  const btnResetLogFile = byId('btnResetLogFile');
-  const logFilePathDisplay = byId('logFilePathDisplay');
-  const logFileStatus = byId('logFileStatus');
 
-  // Load saved filename/path
-  chrome.storage.sync.get(['logFileName', 'logAutoSave'], (cfg) => {
-    if (cfg.logFileName) logFileNameEl.value = cfg.logFileName;
-    if (cfg.logFileName) logFilePathDisplay.textContent = cfg.logFileName;
-  });
+  // HTML Log UI
+  const setLogStatus = (text, timeout = 2500) => {
+    if (!logFileStatus) return;
+    logFileStatus.textContent = text || "";
+    if (timeout > 0) {
+      setTimeout(() => {
+        if (logFileStatus.textContent === text) logFileStatus.textContent = "";
+      }, timeout);
+    }
+  };
 
-  // Let user pick a filename (note: Chrome extensions can't open arbitrary file pickers; we'll request downloads permission and save to Downloads)
   if (btnChooseLogFile) {
-    btnChooseLogFile.addEventListener('click', async () => {
-      // Request downloads permission if not present
+    btnChooseLogFile.addEventListener("click", async () => {
       if (chrome.permissions) {
-        const ok = await new Promise((res) => chrome.permissions.request({ permissions: ['downloads'] }, (granted) => res(Boolean(granted))));
-        if (!ok) {
-          logFileStatus.textContent = 'Downloads permission is required to save interactively.';
-          setTimeout(() => (logFileStatus.textContent = ''), 3000);
+        const granted = await new Promise((resolve) => {
+          chrome.permissions.request({ permissions: ["downloads"] }, (ok) => {
+            if (chrome.runtime.lastError) resolve(false);
+            else resolve(Boolean(ok));
+          });
+        });
+        if (!granted) {
+          setLogStatus("Downloads permission required.", 2500);
           return;
         }
       }
 
-      const suggested = (logFileNameEl.value && logFileNameEl.value.trim()) || 'closed-tabs.html';
+      const suggested =
+        (logFileNameEl && logFileNameEl.value && logFileNameEl.value.trim()) ||
+        "closed-tabs.html";
       btnChooseLogFile.disabled = true;
-      logFileStatus.textContent = 'Opening Save As...';
-      // Determine desired mode from Save As toggle
-      const saveAsMode = Boolean(byId('chkSaveAsEveryTime') && byId('chkSaveAsEveryTime').checked);
-      const msg = saveAsMode ? { type: 'saveAsLogFile', suggestedName: suggested } : { type: 'exportHtmlNow' };
-      chrome.runtime.sendMessage(msg, (res) => {
-        btnChooseLogFile.disabled = false;
-        if (res && res.ok) {
-          if (res.filename) {
-            logFilePathDisplay.textContent = `Saved: ${res.filename}`;
-            logFileNameEl.value = res.filename;
-          }
-          logFileStatus.textContent = saveAsMode ? 'Save dialog closed. If you saved, filename will be stored.' : 'Exported (overwrite) to Downloads.';
-        } else {
-          logFileStatus.textContent = `Save failed: ${(res && res.error) || 'unknown'}`;
-        }
-        setTimeout(() => (logFileStatus.textContent = ''), 2500);
+      setLogStatus("Opening Save As…", 3000);
+      const res = await sendMessage({
+        type: "saveAsLogFile",
+        suggestedName: suggested
       });
+      btnChooseLogFile.disabled = false;
+      if (res && res.ok) {
+        if (res.filename && logFilePathDisplay) {
+          logFilePathDisplay.textContent = res.filename;
+        }
+        if (logFileNameEl && res.filename) {
+          logFileNameEl.value = res.filename;
+        }
+        setLogStatus("Save dialog completed.");
+      } else {
+        setLogStatus(`Save failed: ${(res && res.error) || "unknown"}`, 2500);
+      }
     });
   }
 
   if (btnResetLogFile) {
-    btnResetLogFile.addEventListener('click', () => {
-      chrome.storage.sync.remove(['logFileName'], () => {
-        logFileNameEl.value = '';
-        logFilePathDisplay.textContent = 'File not set.';
-        logFileStatus.textContent = 'Setting cleared';
-        setTimeout(() => (logFileStatus.textContent = ''), 1200);
+    btnResetLogFile.addEventListener("click", () => {
+      chrome.storage.sync.remove(["logFileName"], () => {
+        if (logFileNameEl) logFileNameEl.value = "";
+        if (logFilePathDisplay) logFilePathDisplay.textContent = "File not set.";
+        setLogStatus("Setting cleared", 1800);
       });
     });
   }
-  // Downloads permission indicator and request button
-  const permIndicator = byId('permIndicator');
-  const btnRequestDownloads = byId('btnRequestDownloads');
-  async function refreshDownloadsPerm() {
-    if (!chrome.permissions) return;
-    chrome.permissions.contains({ permissions: ['downloads'] }, (has) => {
-      permIndicator.textContent = has ? 'granted' : 'not granted';
-    });
-  }
-  if (btnRequestDownloads) {
-    btnRequestDownloads.addEventListener('click', async () => {
-      if (!chrome.permissions) return;
-      btnRequestDownloads.disabled = true;
-      const granted = await new Promise((res) => chrome.permissions.request({ permissions: ['downloads'] }, (g) => res(Boolean(g))));
-      btnRequestDownloads.disabled = false;
-      refreshDownloadsPerm();
-      if (!granted) {
-        logFileStatus.textContent = 'Downloads permission required.';
-        setTimeout(() => (logFileStatus.textContent = ''), 1800);
+
+  if (btnExportHtml) {
+    btnExportHtml.addEventListener("click", async () => {
+      btnExportHtml.disabled = true;
+      setLogStatus("Exporting…", 3000);
+      const saveAs = Boolean(chkSaveAsEveryTime && chkSaveAsEveryTime.checked);
+      const msg = saveAs
+        ? {
+            type: "saveAsLogFile",
+            suggestedName:
+              (logFileNameEl && logFileNameEl.value && logFileNameEl.value.trim()) ||
+              "closed-tabs.html"
+          }
+        : { type: "exportHtmlNow" };
+      const res = await sendMessage(msg);
+      btnExportHtml.disabled = false;
+      if (res && res.ok) {
+        if (res.filename && logFilePathDisplay) {
+          logFilePathDisplay.textContent = res.filename;
+        }
+        if (logFileNameEl && res.filename) {
+          logFileNameEl.value = res.filename;
+        }
+        setLogStatus("Export complete – check Downloads.");
+      } else {
+        setLogStatus(`Export failed: ${(res && res.error) || "unknown"}`, 2500);
       }
     });
   }
-  refreshDownloadsPerm();
 
-  // Save As toggle: persist in sync
-  const chkSaveAs = byId('chkSaveAsEveryTime');
-  if (chkSaveAs) {
-    chrome.storage.sync.get('logSaveAsEveryTime', (cfg) => {
-      chkSaveAs.checked = Boolean(cfg.logSaveAsEveryTime);
-    });
-    chkSaveAs.addEventListener('change', () => {
-      chrome.storage.sync.set({ logSaveAsEveryTime: Boolean(chkSaveAs.checked) });
-    });
-  }
-  // Export on close toggle: default true
-  const chkExportOnClose = byId('chkExportOnClose');
-  if (chkExportOnClose) {
-    chrome.storage.sync.get('logExportOnClose', (cfg) => {
-      const v = cfg.logExportOnClose;
-      chkExportOnClose.checked = (v == null) ? true : Boolean(v);
-    });
-    chkExportOnClose.addEventListener('change', () => {
-      chrome.storage.sync.set({ logExportOnClose: Boolean(chkExportOnClose.checked) });
-    });
-  }
-  // Export now button: request background to write aggregated HTML and download it.
-  const btnExportHtml = byId('btnExportHtml');
-  if (btnExportHtml) {
-    btnExportHtml.addEventListener('click', () => {
-      btnExportHtml.disabled = true;
-      const prev = logFileStatus.textContent;
-      logFileStatus.textContent = 'Exporting...';
-      const saveAsMode = Boolean(byId('chkSaveAsEveryTime') && byId('chkSaveAsEveryTime').checked);
-      const msg = saveAsMode ? { type: 'saveAsLogFile', suggestedName: (logFileNameEl.value && logFileNameEl.value.trim()) || 'closed-tabs.html' } : { type: 'exportHtmlNow' };
-      chrome.runtime.sendMessage(msg, (res) => {
-        btnExportHtml.disabled = false;
-        if (res && res.ok) {
-          if (res.filename) {
-            logFilePathDisplay.textContent = `Saved: ${res.filename}`;
-            logFileNameEl.value = res.filename;
-          }
-          logFileStatus.textContent = 'Export complete — check Downloads.';
-        } else {
-          logFileStatus.textContent = `Export failed: ${(res && res.error) || 'unknown'}`;
-        }
-        setTimeout(() => (logFileStatus.textContent = prev || ''), 2500);
+  if (btnRequestDownloads) {
+    btnRequestDownloads.addEventListener("click", () => {
+      if (!chrome.permissions) return;
+      btnRequestDownloads.disabled = true;
+      chrome.permissions.request({ permissions: ["downloads"] }, () => {
+        btnRequestDownloads.disabled = false;
+        refreshDownloadsPerm();
       });
     });
   }
-  // ===== /Telegram UI =====
+
+  if (chkSaveAsEveryTime) {
+    chkSaveAsEveryTime.addEventListener("change", () => {
+      chrome.storage.sync.set({
+        logSaveAsEveryTime: Boolean(chkSaveAsEveryTime.checked)
+      });
+    });
+  }
+
+  if (chkExportOnClose) {
+    chkExportOnClose.addEventListener("change", () => {
+      chrome.storage.sync.set({
+        logExportOnClose: Boolean(chkExportOnClose.checked)
+      });
+    });
+  }
+
+  populateInitialFields();
+  refreshHistory();
+  sendMessage({ type: "resetBadge" });
+  refreshDownloadsPerm();
+  updateGmailStatus();
 });

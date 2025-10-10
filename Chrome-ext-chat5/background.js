@@ -2,7 +2,7 @@
  * Background service worker for the Tab Monitor Closer extension.
  *
  * Tracks tab open times, closes unread tabs after the configured threshold,
- * and notifies the user with an Undo option. Email sending was removed.
+ * and notifies the user with an Undo option (including optional Gmail/Telegram alerts).
  */
 
 const DEFAULT_THRESHOLD_HOURS = 24;
@@ -324,7 +324,7 @@ function checkTabsNow() {
                     chrome.storage.local.set({ openTimes });
                     findSessionIdForUrl(url).then((sessionId) => {
                       addToHistory(url, title, { sessionId, prev });
-                      notifyClosedTabByEmailWebFlow(title, url);
+                      notifyClosedTabByEmail(title, url);
                       notifyClosedTabByTelegram(title, url);
                       incrementBadgeCount();
                       notifyClosed(url, title, { sessionId, prev });
@@ -594,6 +594,49 @@ function resetBadgeCount() {
 // Popup communication for history and badge
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
+  if (msg.type === 'gmail-status') {
+    (async () => {
+      try {
+        const status = await getGmailStatus();
+        sendResponse({ ok: true, ...status });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err && (err.message || err)) });
+      }
+    })();
+    return true;
+  }
+  if (msg.type === 'gmail-connect') {
+    (async () => {
+      try {
+        await getGmailToken({ allowInteractive: true });
+        const status = await getGmailStatus();
+        sendResponse({ ok: true, ...status });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err && (err.message || err)) });
+      }
+    })();
+    return true;
+  }
+  if (msg.type === 'gmail-signOut') {
+    clearGmailTokens()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err && (err.message || err)) }));
+    return true;
+  }
+  if (msg.type === 'gmail-send') {
+    (async () => {
+      try {
+        const payload = msg.payload || {};
+        const { to, subject, body } = payload;
+        const allowInteractive = payload.allowInteractive !== false;
+        await sendGmailMessage({ to, subject, body }, { allowInteractive });
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err && (err.message || err)) });
+      }
+    })();
+    return true;
+  }
   if (msg.type === 'telegram-send') {
     (async () => {
       await sendTelegramMessage(msg.payload || {});
@@ -760,32 +803,17 @@ function enqueueUndoMapPut(id, value) {
     }));
 }
 
-// =================== Gmail via launchWebAuthFlow ===================
+// =================== Gmail via chrome.identity.getAuthToken ===================
 
-// TODO: вставьте ваш OAuth Web Client ID:
-const OAUTH_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
-
-// Единственный скоуп: отправка писем
-const OAUTH_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 
-// --- utils: MIME / кодировки ---
-function encodeRFC2047(str) {
-  const bytes = new TextEncoder().encode(str || '');
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  const b64 = btoa(bin);
-  return `=?UTF-8?B?${b64}?=`;
-}
-
 function base64UrlEncodeUtf8(str) {
-  const bytes = new TextEncoder().encode(str);
+  const bytes = new TextEncoder().encode(str || '');
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-// Regular base64 (not URL-safe) encoding of UTF-8 string for data: URI usage
 function base64EncodeUtf8(str) {
   const bytes = new TextEncoder().encode(str || '');
   let bin = '';
@@ -793,7 +821,133 @@ function base64EncodeUtf8(str) {
   return btoa(bin);
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
+function buildPlainMime({ to, subject, body }) {
+  const lines = [
+    `To: ${to}`,
+    `Subject: ${subject || ''}`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    body || ''
+  ];
+  return lines.join('\r\n');
+}
+
+function getAuthTokenSilently() {
+  return new Promise((resolve) => {
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (chrome.runtime.lastError || !token) resolve(null);
+      else resolve(token);
+    });
+  });
+}
+
+function getAuthTokenInteractive() {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+      if (chrome.runtime.lastError || !token) {
+        reject(chrome.runtime.lastError || new Error('No token'));
+      } else {
+        resolve(token);
+      }
+    });
+  });
+}
+
+function clearGmailTokens() {
+  return new Promise((resolve) => {
+    chrome.identity.clearAllCachedAuthTokens(() => resolve());
+  });
+}
+
+async function getGmailToken({ allowInteractive = false } = {}) {
+  const silent = await getAuthTokenSilently();
+  if (silent) return silent;
+  if (!allowInteractive) return null;
+  return getAuthTokenInteractive();
+}
+
+async function sendGmailMessage({ to, subject, body }, { allowInteractive = false } = {}) {
+  if (!to) throw new Error('Missing recipient');
+  const mime = buildPlainMime({ to, subject, body });
+  const raw = base64UrlEncodeUtf8(mime);
+
+  let token = await getGmailToken({ allowInteractive });
+  if (!token) throw new Error('Not authorized');
+
+  const doSend = async () => {
+    const res = await fetch(GMAIL_SEND_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ raw })
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const err = new Error(`Gmail send failed: ${res.status} ${text}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json().catch(() => ({}));
+  };
+
+  try {
+    return await doSend();
+  } catch (err) {
+    if (err && err.status === 401) {
+      await clearGmailTokens();
+      if (!allowInteractive) throw err;
+      token = await getGmailToken({ allowInteractive: true });
+      if (!token) throw err;
+      return doSend();
+    }
+    throw err;
+  }
+}
+
+async function notifyClosedTabByEmail(title, url) {
+  try {
+    const { notifyEmail } = await chrome.storage.sync.get('notifyEmail');
+    if (!notifyEmail) return;
+    const subject = `Closed as unread: ${title || url}`;
+    const body = `The following tab was closed as unread:\n\n${title || url}\n${url}`;
+    await sendGmailMessage({ to: notifyEmail, subject, body }, { allowInteractive: false });
+  } catch (err) {
+    console.warn('Gmail notification failed', err);
+  }
+}
+
+async function getGmailStatus() {
+  const token = await getAuthTokenSilently();
+  if (!token) return { signedIn: false, email: null };
+  const profile = await new Promise((resolve) => {
+    if (!chrome.identity || !chrome.identity.getProfileUserInfo) {
+      resolve({});
+      return;
+    }
+    chrome.identity.getProfileUserInfo((info) => {
+      if (chrome.runtime.lastError) resolve({});
+      else resolve(info || {});
+    });
+  });
+  return {
+    signedIn: true,
+    email: profile && profile.email ? profile.email : null
+  };
+}
+
+
+// =================== Telegram Bot API ===================
 // =================== Telegram Bot API ===================
 const TELEGRAM_API_ORIGIN = 'https://api.telegram.org';
 
