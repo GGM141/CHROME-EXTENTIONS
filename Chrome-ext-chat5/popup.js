@@ -130,5 +130,5 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // No native host — only SmtpJS, so no extra toggles here.
+  // No native host - only SmtpJS, so no extra toggles here.
 });
