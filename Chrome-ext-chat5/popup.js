@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const raw = String(field.thresholdHHMM.value || "").trim();
     const m = raw.match(/^(\d{1,3}):([0-5]\d)$/);
     if (!m) {
-      statusEl.textContent = "Invalid format. Use HH:MM.";
+      statusEl.textContent = "Use HH:MM format.";
       setTimeout(() => (statusEl.textContent = ""), 1800);
       return;
     }
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         thresholdMinutes: minutes,
       },
       () => {
-        statusEl.textContent = "Saved";
+        statusEl.textContent = "Saved settings";
         setTimeout(() => (statusEl.textContent = ""), 1500);
       },
     );
@@ -52,11 +52,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = byId("runNow");
     btn.disabled = true;
     const prev = statusEl.textContent;
-    statusEl.textContent = "Checking...";
+    statusEl.textContent = "Checking tabs...";
     chrome.runtime.sendMessage({ type: "runCheckNow" }, (res) => {
       btn.disabled = false;
       if (res && res.ok) {
-        statusEl.textContent = "Check started";
+        statusEl.textContent = "Started check";
       } else {
         statusEl.textContent = "Check failed";
       }
