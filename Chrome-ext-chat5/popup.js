@@ -58,7 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res && res.ok) {
         statusEl.textContent = "Started check";
       } else {
-        statusEl.textContent = "Check failed";
+        statusEl.textContent = "Failed check";
       }
       setTimeout(() => (statusEl.textContent = prev || ""), 1200);
     });
@@ -100,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
             (res) => {
               btn.disabled = false;
               if (!res || !res.ok) {
-                statusEl.textContent = "Restore failed";
+                statusEl.textContent = "Failed restore";
                 setTimeout(() => (statusEl.textContent = ""), 1500);
               } else {
                 // Refresh history to reflect removal
@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   chrome.runtime.sendMessage({ type: "getClosedHistory" }, (res) => {
     if (res && res.ok) renderHistory(res.history || []);
-    else historyEl.textContent = "Load failed";
+    else historyEl.textContent = "Failed load";
   });
   chrome.runtime.sendMessage({ type: "resetBadge" }, () => {});
 
