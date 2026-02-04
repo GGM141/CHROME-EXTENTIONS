@@ -154,6 +154,13 @@ function checkTabsNow() {
   const startedAt = Date.now();
   let scannedTabs = 0;
   let eligibleTabs = 0;
+  let closedTabs = 0;
+  let scriptErrors = 0;
+  const skippedTabs = {
+    pinned: 0,
+    audible: 0,
+    notHttp: 0,
+  };
   logDebug("Check started");
   // Safety timer in case callbacks never fire
   if (checkGuardTimer) clearTimeout(checkGuardTimer);
@@ -189,6 +196,9 @@ function checkTabsNow() {
               durationMs: Date.now() - startedAt,
               scannedTabs,
               eligibleTabs,
+              closedTabs,
+              scriptErrors,
+              skippedTabs,
             });
           }
         };
@@ -215,9 +225,9 @@ function checkTabsNow() {
               return;
             }
             // Skip pinned tabs by default.
-            if (tab.pinned) { pending--; maybeFinish(); return; }
-            if (tab.audible) { pending--; maybeFinish(); return; }
-            if (!tab.url || !isHttpLike(tab.url)) { pending--; maybeFinish(); return; }
+            if (tab.pinned) { skippedTabs.pinned++; pending--; maybeFinish(); return; }
+            if (tab.audible) { skippedTabs.audible++; pending--; maybeFinish(); return; }
+            if (!tab.url || !isHttpLike(tab.url)) { skippedTabs.notHttp++; pending--; maybeFinish(); return; }
             // Inject a script to get the current vertical scroll offset.
             chrome.scripting.executeScript(
               {
@@ -235,6 +245,7 @@ function checkTabsNow() {
               (results) => {
                 if (chrome.runtime.lastError) {
                   // Back off retries to avoid repeated errors
+                  scriptErrors++;
                   logDebug("executeScript failed", {
                     tabId,
                     err: chrome.runtime.lastError,
@@ -268,6 +279,7 @@ function checkTabsNow() {
                       return;
                     }
                     // Closing succeeded: clean up and record.
+                    closedTabs++;
                     logDebug("Tab closed", { tabId, url });
                     updateOpenTimes((current) => {
                       delete current[idStr];
