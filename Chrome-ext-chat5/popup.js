@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   chrome.runtime.sendMessage({ type: "getClosedHistory" }, (res) => {
     if (res && res.ok) renderHistory(res.history || []);
-    else historyEl.textContent = "Failed to load";
+    else historyEl.textContent = "Load failed";
   });
   chrome.runtime.sendMessage({ type: "resetBadge" }, () => {});
 
