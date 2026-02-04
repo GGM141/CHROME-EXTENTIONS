@@ -32,21 +32,21 @@
 </head>
 <body>
   <h3>Tab Monitor Closer</h3>
-  <p>Unread tabs older than the timeout are closed automatically.</p>
+  <p>Unread tabs past the timeout are closed automatically.</p>
 
   <label for="thresholdHHMM">Timeout (HH:MM):</label>
   <input type="text" id="thresholdHHMM" placeholder="24:00" pattern="^\\d{1,3}:[0-5]\\d$" />
 
   <div style="margin-top: 12px; display:flex; gap:8px;">
     <button id="save">Save</button>
-    <button id="runNow">Run check now</button>
+    <button id="runNow">Run check</button>
   </div>
 
   <hr />
-  <h4>Recent Closed Tabs</h4>
+  <h4>Recently Closed</h4>
   <div id="history"></div>
   <div style="margin-top:8px; display:flex; gap:8px;">
-    <button id="clearHistory">Clear History</button>
+    <button id="clearHistory">Clear</button>
   </div>
   <p id="status"></p>
   <script src="popup.js"></script>

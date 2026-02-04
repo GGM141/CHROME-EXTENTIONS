@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const raw = String(field.thresholdHHMM.value || "").trim();
     const m = raw.match(/^(\d{1,3}):([0-5]\d)$/);
     if (!m) {
-      statusEl.textContent = "Invalid format. Use HH:MM";
+      statusEl.textContent = "Invalid format. Use HH:MM.";
       setTimeout(() => (statusEl.textContent = ""), 1800);
       return;
     }
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         thresholdMinutes: minutes,
       },
       () => {
-        statusEl.textContent = "Saved!";
+        statusEl.textContent = "Saved";
         setTimeout(() => (statusEl.textContent = ""), 1500);
       },
     );
@@ -56,9 +56,9 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ type: "runCheckNow" }, (res) => {
       btn.disabled = false;
       if (res && res.ok) {
-        statusEl.textContent = "Check triggered";
+        statusEl.textContent = "Check started";
       } else {
-        statusEl.textContent = "Failed to run";
+        statusEl.textContent = "Check failed";
       }
       setTimeout(() => (statusEl.textContent = prev || ""), 1200);
     });
@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load history and reset badge on open
   function renderHistory(items) {
       if (!items || !items.length) {
-        historyEl.innerHTML = "<em>No items yet.</em>";
+        historyEl.innerHTML = "<em>No recent items.</em>";
         return;
       }
       const html = items
@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   chrome.runtime.sendMessage({ type: "getClosedHistory" }, (res) => {
     if (res && res.ok) renderHistory(res.history || []);
-    else historyEl.textContent = "Failed to load history";
+    else historyEl.textContent = "Failed to load";
   });
   chrome.runtime.sendMessage({ type: "resetBadge" }, () => {});
 
