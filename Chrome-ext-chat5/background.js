@@ -30,6 +30,11 @@ function logDebug(...args) {
   }
 }
 
+function logLastError(context) {
+  if (!chrome.runtime || !chrome.runtime.lastError) return;
+  logDebug(`${context} failed`, chrome.runtime.lastError);
+}
+
 // Initialize storage on install.  Record the current time for all open tabs
 // and create a periodic alarm.  We use an alarm instead of setInterval
 // because alarms continue to fire even when the background is not kept
@@ -167,6 +172,10 @@ function checkTabsNow() {
   checkGuardTimer = setTimeout(() => {
     checkInProgress = false;
     checkGuardTimer = null;
+    chrome.storage.local.set(
+      { lastCheckAt: Date.now(), lastCheckDurationMs: Date.now() - startedAt, lastCheckStatus: "timeout" },
+      () => logLastError("lastCheck (timeout) write"),
+    );
     logDebug("Check guard timeout");
   }, 60000);
 
@@ -192,6 +201,19 @@ function checkTabsNow() {
               checkGuardTimer = null;
             }
             checkInProgress = false;
+            chrome.storage.local.set(
+              {
+                lastCheckAt: Date.now(),
+                lastCheckDurationMs: Date.now() - startedAt,
+                lastCheckStatus: "finished",
+                lastCheckScannedTabs: scannedTabs,
+                lastCheckEligibleTabs: eligibleTabs,
+                lastCheckClosedTabs: closedTabs,
+                lastCheckScriptErrors: scriptErrors,
+                lastCheckSkippedTabs: skippedTabs,
+              },
+              () => logLastError("lastCheck write"),
+            );
             logDebug("Check finished", {
               durationMs: Date.now() - startedAt,
               scannedTabs,
