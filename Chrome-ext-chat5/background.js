@@ -18,6 +18,7 @@ let checkGuardTimer = null;
 let historyWriteChain = Promise.resolve();
 let badgeWriteChain = Promise.resolve();
 let undoWriteChain = Promise.resolve();
+let openTimesWriteChain = Promise.resolve();
 
 // Initialize storage on install.  Record the current time for all open tabs
 // and create a periodic alarm.  We use an alarm instead of setInterval
@@ -92,10 +93,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // moment the user opened the tab.  If the user navigates later, we'll
 // update the open time in onUpdated.
 chrome.tabs.onCreated.addListener((tab) => {
-  chrome.storage.local.get("openTimes", (data) => {
-    const openTimes = data.openTimes || {};
+  updateOpenTimes((openTimes) => {
     openTimes[tab.id] = Date.now();
-    chrome.storage.local.set({ openTimes });
   });
 });
 
@@ -105,10 +104,8 @@ chrome.tabs.onCreated.addListener((tab) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // Reset on URL change or when a navigation completes.
   if (changeInfo.url || changeInfo.status === "complete") {
-    chrome.storage.local.get("openTimes", (data) => {
-      const openTimes = data.openTimes || {};
+    updateOpenTimes((openTimes) => {
       openTimes[tabId] = Date.now();
-      chrome.storage.local.set({ openTimes });
     });
     // No content script injection needed.
   }
@@ -116,20 +113,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // When a tab becomes active, reset its open time (user likely looked at it).
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  chrome.storage.local.get("openTimes", (data) => {
-    const openTimes = data.openTimes || {};
+  updateOpenTimes((openTimes) => {
     openTimes[tabId] = Date.now();
-    chrome.storage.local.set({ openTimes });
   });
   // No content script injection needed.
 });
 
 // When a tab is removed (closed by the user), forget its record.
 chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.local.get("openTimes", (data) => {
-    const openTimes = data.openTimes || {};
+  updateOpenTimes((openTimes) => {
     delete openTimes[tabId];
-    chrome.storage.local.set({ openTimes });
   });
 });
 
@@ -190,9 +183,11 @@ function checkTabsNow() {
           chrome.tabs.get(tabId, (tab) => {
             if (chrome.runtime.lastError || !tab) {
               // Tab no longer exists; clean up.
-              delete openTimes[idStr];
-              chrome.storage.local.set({ openTimes });
-              pending--; maybeFinish();
+              updateOpenTimes((current) => {
+                delete current[idStr];
+              }).finally(() => {
+                pending--; maybeFinish();
+              });
               return;
             }
             // Skip pinned tabs by default.
@@ -216,9 +211,11 @@ function checkTabsNow() {
               (results) => {
                 if (chrome.runtime.lastError) {
                   // Back off retries to avoid repeated errors
-                  openTimes[idStr] = Date.now();
-                  chrome.storage.local.set({ openTimes });
-                  pending--; maybeFinish();
+                  updateOpenTimes((current) => {
+                    current[idStr] = Date.now();
+                  }).finally(() => {
+                    pending--; maybeFinish();
+                  });
                   return;
                 }
                 const scrollPos =
@@ -239,8 +236,9 @@ function checkTabsNow() {
                       return;
                     }
                     // Closing succeeded: clean up and record.
-                    delete openTimes[idStr];
-                    chrome.storage.local.set({ openTimes });
+                    updateOpenTimes((current) => {
+                      delete current[idStr];
+                    });
                     findSessionIdForUrl(url).then((sessionId) => {
                       addToHistory(url, title, { sessionId, prev });
                       incrementBadgeCount();
@@ -251,9 +249,11 @@ function checkTabsNow() {
                   });
                 } else {
                   // Consider read; refresh timer to avoid repeated checks soon.
-                  openTimes[idStr] = Date.now();
-                  chrome.storage.local.set({ openTimes });
-                  pending--; maybeFinish();
+                  updateOpenTimes((current) => {
+                    current[idStr] = Date.now();
+                  }).finally(() => {
+                    pending--; maybeFinish();
+                  });
                 }
               },
             );
@@ -300,8 +300,7 @@ function notifyClosed(url, title, restore) {
 chrome.notifications.onButtonClicked.addListener(
   (notificationId, buttonIndex) => {
     if (buttonIndex !== 0) return;
-    chrome.storage.local.get("undoMap", (data) => {
-      const undoMap = data.undoMap || {};
+    updateUndoMap((undoMap) => {
       const entry = undoMap[notificationId];
       if (!entry) return;
       const { url, restore } = entry;
@@ -336,18 +335,15 @@ chrome.notifications.onButtonClicked.addListener(
         });
       }
       delete undoMap[notificationId];
-      chrome.storage.local.set({ undoMap });
     });
   },
 );
 
 // Clean up undo entries when the notification is closed/dismissed
 chrome.notifications.onClosed.addListener((notificationId) => {
-  chrome.storage.local.get("undoMap", (data) => {
-    const undoMap = data.undoMap || {};
+  updateUndoMap((undoMap) => {
     if (undoMap[notificationId]) {
       delete undoMap[notificationId];
-      chrome.storage.local.set({ undoMap });
     }
   });
 });
@@ -519,13 +515,33 @@ async function findSessionIdForUrl(url) {
 
 // Helpers to serialize undoMap updates to avoid lost entries
 function enqueueUndoMapPut(id, value) {
+  updateUndoMap((undoMap) => {
+    undoMap[id] = value;
+  });
+}
+
+function updateUndoMap(mutator) {
   undoWriteChain = undoWriteChain
     .catch(() => {})
     .then(() => new Promise((resolve) => {
       chrome.storage.local.get("undoMap", (data) => {
         const undoMap = data.undoMap || {};
-        undoMap[id] = value;
+        mutator(undoMap);
         chrome.storage.local.set({ undoMap }, () => resolve());
       });
     }));
+  return undoWriteChain;
+}
+
+function updateOpenTimes(mutator) {
+  openTimesWriteChain = openTimesWriteChain
+    .catch(() => {})
+    .then(() => new Promise((resolve) => {
+      chrome.storage.local.get("openTimes", (data) => {
+        const openTimes = data.openTimes || {};
+        mutator(openTimes);
+        chrome.storage.local.set({ openTimes }, () => resolve());
+      });
+    }));
+  return openTimesWriteChain;
 }
