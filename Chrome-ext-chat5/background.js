@@ -9,6 +9,7 @@ const DEFAULT_THRESHOLD_HOURS = 24;
 const DEFAULT_THRESHOLD_MINUTES = 0;
 const DEFAULT_CHECK_INTERVAL_MINUTES = 60; // fallback check period
 const MAX_HISTORY = 50;
+const DEBUG = false;
 
 // Guard against overlapping checks
 let checkInProgress = false;
@@ -19,6 +20,15 @@ let historyWriteChain = Promise.resolve();
 let badgeWriteChain = Promise.resolve();
 let undoWriteChain = Promise.resolve();
 let openTimesWriteChain = Promise.resolve();
+
+function logDebug(...args) {
+  if (!DEBUG) return;
+  try {
+    console.warn("[TMC]", ...args);
+  } catch (e) {
+    /* ignore */
+  }
+}
 
 // Initialize storage on install.  Record the current time for all open tabs
 // and create a periodic alarm.  We use an alarm instead of setInterval
@@ -78,6 +88,7 @@ function ensureCheckAlarm() {
       cfg.thresholdMinutes ?? DEFAULT_THRESHOLD_MINUTES,
     );
     chrome.alarms.create("checkTabs", { periodInMinutes: period });
+    logDebug("Alarm set", { periodInMinutes: period });
   });
 }
 
@@ -140,11 +151,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 function checkTabsNow() {
   if (checkInProgress) return;
   checkInProgress = true;
+  logDebug("Check started");
   // Safety timer in case callbacks never fire
   if (checkGuardTimer) clearTimeout(checkGuardTimer);
   checkGuardTimer = setTimeout(() => {
     checkInProgress = false;
     checkGuardTimer = null;
+    logDebug("Check guard timeout");
   }, 60000);
 
   // Run the same logic as the periodic alarm immediately.
@@ -183,6 +196,7 @@ function checkTabsNow() {
           chrome.tabs.get(tabId, (tab) => {
             if (chrome.runtime.lastError || !tab) {
               // Tab no longer exists; clean up.
+              logDebug("Tab missing, cleaning", { tabId, err: chrome.runtime.lastError });
               updateOpenTimes((current) => {
                 delete current[idStr];
               }).finally(() => {
@@ -211,6 +225,10 @@ function checkTabsNow() {
               (results) => {
                 if (chrome.runtime.lastError) {
                   // Back off retries to avoid repeated errors
+                  logDebug("executeScript failed", {
+                    tabId,
+                    err: chrome.runtime.lastError,
+                  });
                   updateOpenTimes((current) => {
                     current[idStr] = Date.now();
                   }).finally(() => {
@@ -232,10 +250,15 @@ function checkTabsNow() {
                     const hadError = Boolean(chrome.runtime.lastError);
                     if (hadError) {
                       // Do not record history/badge on failure; keep openTimes to retry later.
+                      logDebug("Tab close failed", {
+                        tabId,
+                        err: chrome.runtime.lastError,
+                      });
                       pending--; maybeFinish();
                       return;
                     }
                     // Closing succeeded: clean up and record.
+                    logDebug("Tab closed", { tabId, url });
                     updateOpenTimes((current) => {
                       delete current[idStr];
                     });
@@ -249,6 +272,7 @@ function checkTabsNow() {
                   });
                 } else {
                   // Consider read; refresh timer to avoid repeated checks soon.
+                  logDebug("Tab read (scrolled)", { tabId, scrollPos });
                   updateOpenTimes((current) => {
                     current[idStr] = Date.now();
                   }).finally(() => {
@@ -291,6 +315,12 @@ function notifyClosed(url, title, restore) {
     buttons: [{ title: "Undo" }],
   };
   chrome.notifications.create(id, options, () => {
+    if (chrome.runtime.lastError) {
+      logDebug("Notification create failed", {
+        id,
+        err: chrome.runtime.lastError,
+      });
+    }
     const entry = { url, restore: restore || null, ts: Date.now() };
     enqueueUndoMapPut(id, entry);
   });
@@ -527,7 +557,12 @@ function updateUndoMap(mutator) {
       chrome.storage.local.get("undoMap", (data) => {
         const undoMap = data.undoMap || {};
         mutator(undoMap);
-        chrome.storage.local.set({ undoMap }, () => resolve());
+        chrome.storage.local.set({ undoMap }, () => {
+          if (chrome.runtime.lastError) {
+            logDebug("undoMap write failed", chrome.runtime.lastError);
+          }
+          resolve();
+        });
       });
     }));
   return undoWriteChain;
@@ -540,7 +575,12 @@ function updateOpenTimes(mutator) {
       chrome.storage.local.get("openTimes", (data) => {
         const openTimes = data.openTimes || {};
         mutator(openTimes);
-        chrome.storage.local.set({ openTimes }, () => resolve());
+        chrome.storage.local.set({ openTimes }, () => {
+          if (chrome.runtime.lastError) {
+            logDebug("openTimes write failed", chrome.runtime.lastError);
+          }
+          resolve();
+        });
       });
     }));
   return openTimesWriteChain;
