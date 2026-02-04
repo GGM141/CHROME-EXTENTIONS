@@ -151,6 +151,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 function checkTabsNow() {
   if (checkInProgress) return;
   checkInProgress = true;
+  const startedAt = Date.now();
+  let scannedTabs = 0;
+  let eligibleTabs = 0;
   logDebug("Check started");
   // Safety timer in case callbacks never fire
   if (checkGuardTimer) clearTimeout(checkGuardTimer);
@@ -182,15 +185,22 @@ function checkTabsNow() {
               checkGuardTimer = null;
             }
             checkInProgress = false;
+            logDebug("Check finished", {
+              durationMs: Date.now() - startedAt,
+              scannedTabs,
+              eligibleTabs,
+            });
           }
         };
 
         Object.keys(openTimes).forEach((idStr) => {
+          scannedTabs++;
           const tabId = parseInt(idStr, 10);
           const opened = openTimes[idStr];
           if (!opened || now - opened <= THRESHOLD_MS) {
             return;
           }
+          eligibleTabs++;
           // Check the tab still exists before attempting to execute a script.
           pending++;
           chrome.tabs.get(tabId, (tab) => {
