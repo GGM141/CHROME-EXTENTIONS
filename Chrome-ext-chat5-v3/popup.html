@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tab Monitor Closer</title>
+  <style>
+    html, body {
+      min-width: 640px;
+    }
+    body {
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      margin: 8px;
+      width: 640px;
+      font-size: 12.5px;
+      line-height: 1.25;
+      color: #1f2328;
+      background: #ffffff;
+    }
+    label {
+      display: block;
+      margin-top: 6px;
+      font-weight: 600;
+      color: #111418;
+    }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 5px 6px;
+      box-sizing: border-box;
+      margin-top: 3px;
+      font-size: 12.5px;
+      border: 1px solid #cfd7df;
+      border-radius: 4px;
+      background: #ffffff;
+    }
+    button {
+      margin-top: 8px;
+      padding: 5px 8px;
+      font-size: 12.5px;
+      border: 1px solid #c7cfd8;
+      border-radius: 4px;
+      background: #f4f6f8;
+      color: #111418;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #e9edf2;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .btn-primary {
+      background: #1f6feb;
+      border-color: #1b5fcc;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .btn-primary:hover {
+      background: #1b64d6;
+    }
+    p {
+      margin-top: 8px;
+    }
+    hr {
+      margin: 10px 0;
+      border: 0;
+      border-top: 1px solid #e2e6eb;
+    }
+    .hint {
+      margin-top: 4px;
+      font-size: 11.5px;
+      color: #4b5563;
+      word-break: break-word;
+    }
+    .row { margin-top: 6px; display:flex; gap:6px; flex-wrap: wrap; }
+    .row.center { align-items:center; }
+    .controls { margin-top: 8px; display:flex; gap:6px; flex-wrap: wrap; }
+    .file-display { font-weight: 600; color: #1f2328; }
+    .small-note { font-size: 11px; color: #a31f1f; margin-top:6px; }
+    p { word-break: break-word; }
+    @media (max-width: 610px) {
+      body { width: 100%; }
+      button { flex: 1 1 100%; }
+      .row, .controls { gap: 4px; }
+      input[type="email"], input[type="password"], input[type="text"] { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <h3>Tab Monitor Closer</h3>
+  <p>Tabs left unread beyond the timeout are closed automatically.</p>
+
+  <label for="thresholdHHMM">Timeout (HH:MM)</label>
+  <input type="text" id="thresholdHHMM" placeholder="24:00" pattern="^\d{1,3}:[0-5]\d$" inputmode="numeric" spellcheck="false" autocomplete="off" />
+  <div class="hint">Set to 00:00 to disable automatic checks.</div>
+
+  <div class="controls">
+    <button id="save" class="btn-primary">Save</button>
+    <button id="runNow">Run check</button>
+  </div>
+
+  <hr />
+
+  <h3>Gmail</h3>
+  <label for="notifyEmail">Recipient email</label>
+  <input type="email" id="notifyEmail" placeholder="you@example.com" autocomplete="email" />
+  <div class="row">
+    <button id="btnGmailConnect" type="button">Connect Gmail</button>
+    <button id="btnGmailTest" type="button">Send test email</button>
+    <button id="btnGmailSignOut" type="button">Sign out</button>
+  </div>
+  <div id="gmailStatus" class="hint"></div>
+
+  <hr />
+
+  <h3>Telegram</h3>
+  <label for="tgToken">Bot API token</label>
+  <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." title="Bot token from @BotFather. Stored in chrome.storage.sync." />
+  <label for="tgChatId">Chat ID or @channel</label>
+  <input type="text" id="tgChatId" placeholder="123456789 or @your_channel" title="Personal chat or group ID, or a channel handle. The bot must have permission to post." />
+  <div class="row">
+    <button id="btnTgTest" type="button" title="Send a test message to Telegram">Send test to Telegram</button>
+  </div>
+  <div class="hint">If token or chat ID is empty, no messages are sent. For channels, use -100XXXXXXXXXX or @channelname.</div>
+
+  <hr />
+
+  <h3>HTML Log</h3>
+  <label for="logFileName">HTML log file name</label>
+  <input type="text" id="logFileName" placeholder="closed-tabs.html" title="Name for the saved closed-tabs log." />
+  <div class="row">
+    <button id="btnChooseLogFile" type="button">Choose or create file</button>
+    <button id="btnResetLogFile" type="button">Clear saved name</button>
+    <button id="btnExportHtml" type="button">Export now</button>
+  </div>
+  <div class="hint">Current saved file: <span id="logFilePathDisplay" class="file-display">Not set.</span></div>
+  <div class="hint" id="logFileStatus"></div>
+  <div class="row center">
+    <div id="downloadsPermStatus" class="hint">Downloads permission: <strong id="permIndicator">checking</strong></div>
+    <button id="btnRequestDownloads" type="button">Permission enabled</button>
+  </div>
+  <div class="row center">
+    <label><input type="checkbox" id="chkSaveAsEveryTime" /> Always use Save As (interactive)</label>
+  </div>
+  <div class="row center">
+    <label><input type="checkbox" id="chkExportOnClose" /> Export on close (automatic export when a tab is closed)</label>
+  </div>
+  <div class="small-note">Warning: enabling Export on close may trigger frequent downloads when many tabs are closed. Consider manual export to avoid many files.</div>
+
+  <hr />
+
+  <h4>Recently Closed Tabs</h4>
+  <div id="history"></div>
+  <div class="row">
+    <button id="clearHistory">Clear history</button>
+  </div>
+  <p id="status" role="status"></p>
+  <script src="popup.js"></script>
+</body>
+</html>

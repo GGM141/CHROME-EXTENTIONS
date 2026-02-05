@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Monitor Closer",
+  "description": "Closes unread tabs after a timeout, with optional Gmail/Telegram alerts and an HTML log export.",
+  "version": "1.0",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "scripting",
+    "notifications",
+    "sessions",
+    "downloads",
+    "identity",
+    "identity.email"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "https://gmail.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "301187248193-q8ju2fgq3718mp12j4mstnscj0rpi897.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Tab Monitor Closer",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
