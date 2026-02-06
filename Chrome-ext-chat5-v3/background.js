@@ -8,6 +8,7 @@
 const DEFAULT_THRESHOLD_HOURS = 24;
 const DEFAULT_THRESHOLD_MINUTES = 0;
 const DEFAULT_CHECK_INTERVAL_MINUTES = 60; // fallback check period
+const DEFAULT_BATCH_WINDOW_MINUTES = 1;
 const MAX_HISTORY = 50;
 
 // Guard against overlapping checks
@@ -20,7 +21,8 @@ let badgeWriteChain = Promise.resolve();
 let undoWriteChain = Promise.resolve();
 let openTimesWriteChain = Promise.resolve();
 
-const BATCH_WINDOW_MS = 4000;
+let batchWindowPrefLoaded = false;
+let cachedBatchWindowMs = DEFAULT_BATCH_WINDOW_MINUTES * 60 * 1000;
 let pendingBatchEntries = [];
 let batchFlushTimer = null;
 let batchFlushChain = Promise.resolve();
@@ -51,8 +53,11 @@ chrome.runtime.onInstalled.addListener(() => {
       toSet.thresholdHours = DEFAULT_THRESHOLD_HOURS;
     if (cfg.thresholdMinutes == null)
       toSet.thresholdMinutes = DEFAULT_THRESHOLD_MINUTES;
+    if (cfg.batchWindowMinutes == null)
+      toSet.batchWindowMinutes = DEFAULT_BATCH_WINDOW_MINUTES;
     if (Object.keys(toSet).length) chrome.storage.sync.set(toSet);
   });
+  loadBatchWindowPreference();
   // Initialize badge appearance
   try {
     chrome.action.setBadgeBackgroundColor({ color: "#5C6BC0" });
@@ -65,6 +70,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // Ensure alarm exists on browser startup as well.
 chrome.runtime.onStartup.addListener(() => {
   ensureCheckAlarm();
+  loadBatchWindowPreference();
   // Ensure we have sensible openTimes for existing tabs on browser startup.
   chrome.tabs.query({}, (tabs) => {
     updateOpenTimes((openTimes) => {
@@ -110,11 +116,44 @@ function ensureCheckAlarm() {
   });
 }
 
+function loadBatchWindowPreference() {
+  chrome.storage.sync.get(["batchWindowMinutes"], (cfg) => {
+    const minutes = Number(cfg.batchWindowMinutes);
+    if (Number.isFinite(minutes) && minutes >= 1) {
+      cachedBatchWindowMs = Math.floor(minutes) * 60 * 1000;
+    } else {
+      cachedBatchWindowMs = DEFAULT_BATCH_WINDOW_MINUTES * 60 * 1000;
+    }
+    batchWindowPrefLoaded = true;
+  });
+}
+
+function getBatchWindowMs() {
+  if (!batchWindowPrefLoaded) {
+    loadBatchWindowPreference();
+  }
+  return cachedBatchWindowMs;
+}
+
 // Re-arm alarm automatically when threshold changes in sync storage
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync") return;
   if ("thresholdHours" in changes || "thresholdMinutes" in changes) {
     ensureCheckAlarm();
+  }
+  if ("batchWindowMinutes" in changes) {
+    const next = Number(changes.batchWindowMinutes.newValue);
+    if (Number.isFinite(next) && next >= 1) {
+      cachedBatchWindowMs = Math.floor(next) * 60 * 1000;
+    } else {
+      cachedBatchWindowMs = DEFAULT_BATCH_WINDOW_MINUTES * 60 * 1000;
+    }
+    batchWindowPrefLoaded = true;
+    if (batchFlushTimer) {
+      clearTimeout(batchFlushTimer);
+      batchFlushTimer = null;
+      requestBatchFlush();
+    }
   }
   if ("logExportOnClose" in changes) {
     cachedLogExportOnClose = changes.logExportOnClose.newValue;
@@ -597,7 +636,7 @@ function requestBatchFlush(immediate = false) {
   batchFlushTimer = setTimeout(() => {
     batchFlushTimer = null;
     startBatchFlush();
-  }, BATCH_WINDOW_MS);
+  }, getBatchWindowMs());
 }
 
 function startBatchFlush() {

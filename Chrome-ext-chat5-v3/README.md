@@ -7,6 +7,7 @@ Tab Monitor Closer automatically closes unread tabs after a user-defined timeout
 - Activity-aware detection (scroll and interaction checks).
 - Undo notifications when a tab is closed.
 - Recent closed tabs history with one-click restore.
+- Batch window to group notifications/log exports for rapid closures.
 - Optional Gmail notifications (OAuth via Chrome identity).
 - Optional Telegram bot notifications.
 - HTML log export of closed tabs (aggregated file in Downloads).
@@ -30,6 +31,7 @@ Permissions rationale (high-level):
 
 ## Usage
 - **Timeout (HH:MM):** set a threshold for closing unread tabs.
+- **Batch window (min):** group Gmail/Telegram notifications and HTML log exports for tabs closed close in time (default 1 minute).
 - **Save:** apply the timeout.
 - **Run check:** trigger a scan immediately.
 - **Undo:** use the notification button or restore from history.
@@ -50,6 +52,7 @@ Example:
 ## Storage Keys (summary)
 - `chrome.storage.sync`
   - `thresholdHours`, `thresholdMinutes`
+  - `batchWindowMinutes`
   - `notifyEmail`
   - `tgToken`, `tgChatId`
   - `logFileName`

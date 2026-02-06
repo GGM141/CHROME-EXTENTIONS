@@ -94,6 +94,9 @@
   <label for="thresholdHHMM">Timeout (HH:MM)</label>
   <input type="text" id="thresholdHHMM" placeholder="24:00" pattern="^\d{1,3}:[0-5]\d$" inputmode="numeric" spellcheck="false" autocomplete="off" />
   <div class="hint">Set to 00:00 to disable automatic checks.</div>
+  <label for="batchWindowMinutes">Batch window (min)</label>
+  <input type="text" id="batchWindowMinutes" placeholder="1" pattern="^\d{1,3}$" inputmode="numeric" spellcheck="false" autocomplete="off" />
+  <div class="hint">Groups notifications and log exports for tabs closed close in time.</div>
 
   <div class="controls">
     <button id="save" class="btn-primary">Save</button>

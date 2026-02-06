@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const historyEl = byId("history");
 
   const thresholdEl = byId("thresholdHHMM");
+  const batchWindowEl = byId("batchWindowMinutes");
   const saveBtn = byId("save");
   const runNowBtn = byId("runNow");
   const clearHistoryBtn = byId("clearHistory");
@@ -78,6 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
       [
         "thresholdHours",
         "thresholdMinutes",
+        "batchWindowMinutes",
         "notifyEmail",
         "tgToken",
         "tgChatId",
@@ -96,6 +98,12 @@ document.addEventListener("DOMContentLoaded", () => {
           const hh = String(hours);
           const mm = String(minutes).padStart(2, "0");
           thresholdEl.value = `${hh}:${mm}`;
+        }
+        if (batchWindowEl) {
+          const batchMin = Number.isFinite(Number(cfg.batchWindowMinutes))
+            ? Math.max(1, Number(cfg.batchWindowMinutes))
+            : 1;
+          batchWindowEl.value = String(batchMin);
         }
 
         if (notifyEmailEl) {
@@ -238,10 +246,21 @@ document.addEventListener("DOMContentLoaded", () => {
         flashStatus("Invalid time format. Use HH:MM", 2000);
         return;
       }
+      let batchMinutes = 1;
+      if (batchWindowEl) {
+        const raw = (batchWindowEl.value || "").trim();
+        const parsedBatch = Number(raw);
+        if (!Number.isFinite(parsedBatch) || parsedBatch < 1) {
+          flashStatus("Invalid batch window. Use minutes >= 1", 2500);
+          return;
+        }
+        batchMinutes = Math.floor(parsedBatch);
+      }
       chrome.storage.sync.set(
         {
           thresholdHours: parsed.hours,
-          thresholdMinutes: parsed.minutes
+          thresholdMinutes: parsed.minutes,
+          batchWindowMinutes: batchMinutes
         },
         () => {
           flashStatus("Settings saved", 1500);
