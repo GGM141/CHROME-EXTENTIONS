@@ -20,7 +20,7 @@ Tab Monitor Closer automatically closes unread tabs after a user-defined timeout
 
 Permissions rationale (high-level):
 - `tabs`, `scripting`, `storage`, `alarms`, `notifications`, `sessions`: core tab tracking, closing, undo, and persistence.
-- `identity`, `identity.email`: OAuth sign-in and account display for Gmail notifications.
+- `identity`: OAuth sign-in for Gmail notifications.
 - `downloads`: saving the aggregated HTML log.
 
 ## Install (development)
